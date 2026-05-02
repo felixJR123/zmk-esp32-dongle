@@ -15,6 +15,7 @@
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/modifiers_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
+#include <zmk/hid.h>
 #include <zmk/keymap.h>
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 #include <zmk/events/wpm_state_changed.h>
@@ -22,14 +23,9 @@
 #include <zmk/usb.h>
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
-#define MOD_CTRL_MASK (BIT(0) | BIT(4))
-#define MOD_SHIFT_MASK (BIT(1) | BIT(5))
-#define MOD_ALT_MASK (BIT(2) | BIT(6))
-#define MOD_GUI_MASK (BIT(3) | BIT(7))
 
 static const struct device *const status_uart = DEVICE_DT_GET(STATUS_UART_NODE);
 
-static zmk_mod_flags_t current_modifiers;
 static int current_wpm;
 static uint8_t peripheral_batteries[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
 static bool peripheral_battery_seen[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
@@ -102,16 +98,17 @@ static void send_status_line(void) {
     bool bt_connected = zmk_ble_profile_is_connected(bt_slot - 1);
     bool usb_connected = zmk_usb_is_hid_ready();
     int count = peripheral_count();
+    zmk_mod_flags_t mods = zmk_hid_get_explicit_mods();
 
     char line[192];
     snprintf(line, sizeof(line),
              "layer=%s usb=%d bt=%d bt_slot=%d ctrl=%d alt=%d win=%d shift=%d wpm=%d "
              "peripherals=%d batt=",
              layer_value, usb_connected ? 1 : 0, bt_connected ? 1 : 0, bt_slot,
-             (current_modifiers & MOD_CTRL_MASK) ? 1 : 0,
-             (current_modifiers & MOD_ALT_MASK) ? 1 : 0,
-             (current_modifiers & MOD_GUI_MASK) ? 1 : 0,
-             (current_modifiers & MOD_SHIFT_MASK) ? 1 : 0, current_wpm, count);
+             (mods & (MOD_LCTL | MOD_RCTL)) ? 1 : 0,
+             (mods & (MOD_LALT | MOD_RALT)) ? 1 : 0,
+             (mods & (MOD_LGUI | MOD_RGUI)) ? 1 : 0,
+             (mods & (MOD_LSFT | MOD_RSFT)) ? 1 : 0, current_wpm, count);
 
     append_battery_list(line, sizeof(line), count);
     strncat(line, "\n", sizeof(line) - strlen(line) - 1);
@@ -131,16 +128,6 @@ static void periodic_status_work_handler(struct k_work *work) {
 }
 
 static int esp32_status_listener(const zmk_event_t *eh) {
-    const struct zmk_modifiers_state_changed *modifiers_event =
-        as_zmk_modifiers_state_changed(eh);
-    if (modifiers_event != NULL) {
-        if (modifiers_event->state) {
-            current_modifiers |= modifiers_event->modifiers;
-        } else {
-            current_modifiers &= ~modifiers_event->modifiers;
-        }
-    }
-
 #if IS_ENABLED(CONFIG_ZMK_WPM)
     const struct zmk_wpm_state_changed *wpm_event = as_zmk_wpm_state_changed(eh);
     if (wpm_event != NULL) {
