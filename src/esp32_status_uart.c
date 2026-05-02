@@ -131,6 +131,10 @@ static void schedule_status_send(void) {
     k_work_reschedule(&send_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_EVENT_DELAY_MS));
 }
 
+static void send_status_now(void) {
+    k_work_reschedule(&send_status_work, K_NO_WAIT);
+}
+
 static void send_status_work_handler(struct k_work *work) { send_status_line(); }
 
 static void periodic_status_work_handler(struct k_work *work) {
@@ -139,6 +143,18 @@ static void periodic_status_work_handler(struct k_work *work) {
 }
 
 static int esp32_status_listener(const zmk_event_t *eh) {
+    if (as_zmk_modifiers_state_changed(eh) != NULL) {
+        send_status_now();
+        return 0;
+    }
+
+#if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
+    if (as_zmk_hid_indicators_changed(eh) != NULL) {
+        send_status_now();
+        return 0;
+    }
+#endif
+
 #if IS_ENABLED(CONFIG_ZMK_WPM)
     const struct zmk_wpm_state_changed *wpm_event = as_zmk_wpm_state_changed(eh);
     if (wpm_event != NULL) {
