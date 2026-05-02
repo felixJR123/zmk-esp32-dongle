@@ -1,0 +1,6 @@
+if SHIELD_ESP32_STATUS_DONGLE
+
+config ZMK_ESP32_STATUS_UART
+    default y
+
+endif

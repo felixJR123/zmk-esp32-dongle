@@ -1,0 +1,27 @@
+menuconfig ZMK_ESP32_STATUS_UART
+    bool "ESP32 display status UART"
+    default n
+    depends on SERIAL
+    help
+      Sends a compact keyboard status line to an ESP32 display over UART.
+
+if ZMK_ESP32_STATUS_UART
+
+config ZMK_ESP32_STATUS_UART_PERIODIC_MS
+    int "Periodic status refresh interval"
+    default 5000
+    help
+      Sends a full status line this often, even when no ZMK event changed.
+
+config ZMK_ESP32_STATUS_UART_EVENT_DELAY_MS
+    int "Event send delay"
+    default 25
+    help
+      Short delay used to coalesce rapid ZMK events into one UART line.
+
+config ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS
+    int "Maximum peripheral batteries to report"
+    default 6
+    range 1 9
+
+endif
