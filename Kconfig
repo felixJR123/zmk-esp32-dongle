@@ -24,4 +24,40 @@ config ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS
     default 6
     range 1 9
 
+config ZMK_ESP32_DECK_TILE_1_LABEL
+    string "ESP32 deck tile 1 label"
+    default "Tile 1"
+
+config ZMK_ESP32_DECK_TILE_2_LABEL
+    string "ESP32 deck tile 2 label"
+    default "Tile 2"
+
+config ZMK_ESP32_DECK_TILE_3_LABEL
+    string "ESP32 deck tile 3 label"
+    default "Tile 3"
+
+config ZMK_ESP32_DECK_TILE_4_LABEL
+    string "ESP32 deck tile 4 label"
+    default "Tile 4"
+
+config ZMK_ESP32_DECK_TILE_5_LABEL
+    string "ESP32 deck tile 5 label"
+    default "Tile 5"
+
+config ZMK_ESP32_DECK_TILE_6_LABEL
+    string "ESP32 deck tile 6 label"
+    default "Tile 6"
+
+config ZMK_ESP32_DECK_TILE_7_LABEL
+    string "ESP32 deck tile 7 label"
+    default "Tile 7"
+
+config ZMK_ESP32_DECK_TILE_8_LABEL
+    string "ESP32 deck tile 8 label"
+    default "Tile 8"
+
+config ZMK_ESP32_DECK_TILE_9_LABEL
+    string "ESP32 deck tile 9 label"
+    default "Tile 9"
+
 endif

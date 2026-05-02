@@ -38,6 +38,13 @@ static uint8_t peripheral_batteries[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS
 static bool peripheral_battery_seen[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
 static char command_line[96];
 static size_t command_line_len;
+static const char *const deck_tile_labels[] = {
+    CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL, CONFIG_ZMK_ESP32_DECK_TILE_2_LABEL,
+    CONFIG_ZMK_ESP32_DECK_TILE_3_LABEL, CONFIG_ZMK_ESP32_DECK_TILE_4_LABEL,
+    CONFIG_ZMK_ESP32_DECK_TILE_5_LABEL, CONFIG_ZMK_ESP32_DECK_TILE_6_LABEL,
+    CONFIG_ZMK_ESP32_DECK_TILE_7_LABEL, CONFIG_ZMK_ESP32_DECK_TILE_8_LABEL,
+    CONFIG_ZMK_ESP32_DECK_TILE_9_LABEL,
+};
 
 static void send_status_work_handler(struct k_work *work);
 static void periodic_status_work_handler(struct k_work *work);
@@ -137,6 +144,29 @@ static void send_status_line(void) {
     uart_write_string(line);
 }
 
+static void send_deck_label_line(int tile, const char *label) {
+    if (label == NULL || label[0] == '\0') {
+        return;
+    }
+
+    char safe_label[48];
+    sanitize_value(label, safe_label, sizeof(safe_label));
+
+    char line[80];
+    snprintf(line, sizeof(line), "deck_tile=%d label=%s\n", tile, safe_label);
+    uart_write_string(line);
+}
+
+static void send_deck_label_lines(void) {
+    if (!device_is_ready(status_uart)) {
+        return;
+    }
+
+    for (int i = 0; i < ARRAY_SIZE(deck_tile_labels); i++) {
+        send_deck_label_line(i + 1, deck_tile_labels[i]);
+    }
+}
+
 static void schedule_status_send(void) {
     k_work_reschedule(&send_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_EVENT_DELAY_MS));
 }
@@ -149,6 +179,7 @@ static void send_status_work_handler(struct k_work *work) { send_status_line(); 
 
 static void periodic_status_work_handler(struct k_work *work) {
     send_status_line();
+    send_deck_label_lines();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
 }
 
@@ -190,6 +221,11 @@ static void handle_command_line(const char *line) {
 
     if (strstr(line, "cmd=clear_all_profiles") != NULL) {
         zmk_ble_clear_all_bonds();
+        send_status_now();
+        return;
+    }
+
+    if (strstr(line, "cmd=deck") != NULL) {
         send_status_now();
         return;
     }
@@ -258,6 +294,7 @@ static int esp32_status_init(void) {
     }
 
     schedule_status_send();
+    send_deck_label_lines();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
     k_work_reschedule(&receive_command_work, K_MSEC(30));
     return 0;
