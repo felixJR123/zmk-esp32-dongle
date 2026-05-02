@@ -40,7 +40,7 @@ and include `esp32_status_dongle` in the shield list for the nice!nano build.
 The module sends newline-terminated text packets:
 
 ```text
-layer=Default usb=1 bt=0 bt_slot=1 ctrl=0 alt=0 win=0 shift=0 wpm=42 peripherals=2 batt=91,88
+layer=Default usb=1 bt=0 bt_slot=1 ctrl=0 alt=0 win=0 shift=0 capslock=0 wpm=42 peripherals=2 batt=91,88
 ```
 
 The ESP32 display currently uses:
@@ -50,6 +50,7 @@ The ESP32 display currently uses:
 - `bt`
 - `bt_slot`
 - `ctrl`, `alt`, `win`, `shift`
+- `capslock`
 - `wpm`
 - `peripherals`
 - `batt`, comma-separated peripheral battery percentages
