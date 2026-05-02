@@ -1,0 +1,13 @@
+description: ESP32 display deck tile configuration
+
+compatible: "zmk,esp32-deck"
+
+child-binding:
+  description: ESP32 display deck tile
+  properties:
+    label:
+      type: string
+      description: Label sent to the ESP32 display for this tile.
+    bindings:
+      type: phandle-array
+      description: Future ZMK behavior binding for this tile.

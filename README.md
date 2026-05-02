@@ -115,10 +115,60 @@ Local build example:
 west build -b nice_nano_v2 -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
 ```
 
-### 3. Add Optional Labels In Your `.conf`
+### 3. Add Deck Labels In Your `.overlay`
 
-Put simple deck labels in your keyboard `.conf` file, for example
-`config/your_keyboard.conf`:
+Put deck labels in your keyboard `.overlay` file, for example
+`config/your_keyboard.overlay`:
+
+```dts
+/ {
+    esp32_deck {
+        compatible = "zmk,esp32-deck";
+
+        tile_1 {
+            label = "Mute";
+        };
+
+        tile_2 {
+            label = "Layer";
+        };
+
+        tile_3 {
+            label = "Build";
+        };
+
+        tile_4 {
+            label = "Terminal";
+        };
+
+        tile_5 {
+            label = "Weather";
+        };
+
+        tile_6 {
+            label = "Blank";
+        };
+
+        tile_7 {
+            label = "Desktop";
+        };
+
+        tile_8 {
+            label = "Media";
+        };
+
+        tile_9 {
+            label = "Settings";
+        };
+    };
+};
+```
+
+The ESP32 displays these labels when the SD card does not provide an explicit
+label or icon for that tile. If the SD card has `mute1.bmp`, `terminal4.bmp`, or
+a `/settings/deck.json` label, the SD card visual config wins.
+
+Optional `.conf` labels still work as a fallback or quick test:
 
 ```conf
 CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL="Mute"
@@ -132,11 +182,8 @@ CONFIG_ZMK_ESP32_DECK_TILE_8_LABEL="Media"
 CONFIG_ZMK_ESP32_DECK_TILE_9_LABEL="Settings"
 ```
 
-The ESP32 displays these labels when the SD card does not provide an explicit
-label or icon for that tile. If the SD card has `mute1.bmp`, `terminal4.bmp`, or
-a `/settings/deck.json` label, the SD card visual config wins.
-
-All nine label options are available:
+If both are set, the `.overlay` label wins over the `.conf` fallback. All nine
+fallback label options are available:
 
 ```conf
 CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL="Tile 1"
@@ -202,11 +249,10 @@ keyboard config, so actions can stay in ZMK instead of on the ESP32.
 The current module receives `cmd=deck tile=N` and refreshes status. It does not
 yet invoke ZMK behaviors from that tile number.
 
-### 6. Can Deck Setup Use `.overlay` Instead Of `.conf`?
+### 6. Deck Actions In `.overlay`
 
-Yes. That is the better long-term shape for deck actions because ZMK behaviors
-and macros are naturally configured in devicetree overlays. The planned setup
-would look like this in your keyboard `.overlay`:
+Labels already work from `.overlay`. The next step is making actions work there
+too. The planned setup looks like this:
 
 ```dts
 esp32_deck {
@@ -222,10 +268,9 @@ esp32_deck {
 };
 ```
 
-That `.overlay` binding layer is not implemented yet. The current implementation
-uses `.conf` for simple labels only. The reason is practical: labels are quick
-to expose through Kconfig, but real actions should be devicetree bindings so
-tiles can run normal ZMK behavior such as:
+The `bindings` property is accepted by the devicetree binding now, but invoking
+those bindings from `cmd=deck tile=N` is not implemented yet. Real actions should
+be devicetree bindings so tiles can run normal ZMK behavior such as:
 
 ```dts
 bindings = <&kp C_MUTE>;
@@ -233,8 +278,8 @@ bindings = <&to 1>;
 bindings = <&macro_my_custom_macro>;
 ```
 
-Until the binding layer is added, use `.conf` labels for the screen text and keep
-real deck actions on the roadmap.
+Until the behavior-invocation layer is added, use `.overlay` labels for screen
+text and keep real deck actions on the roadmap.
 
 ## Status Protocol
 
@@ -283,7 +328,22 @@ cmd=deck tile=1
 
 ## Deck Labels
 
-Simple deck labels can be configured in ZMK Kconfig and sent to the display:
+Simple deck labels can be configured in your keyboard `.overlay` and sent to the
+display:
+
+```dts
+/ {
+    esp32_deck {
+        compatible = "zmk,esp32-deck";
+
+        tile_1 {
+            label = "Mute";
+        };
+    };
+};
+```
+
+The older `.conf` fallback also works:
 
 ```conf
 CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL="Mute"
