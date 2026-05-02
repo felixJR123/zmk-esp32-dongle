@@ -13,6 +13,7 @@
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/events/layer_state_changed.h>
+#include <zmk/events/led_indicator_changed.h>
 #include <zmk/events/modifiers_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/hid.h>
@@ -23,10 +24,12 @@
 #include <zmk/usb.h>
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
+#define HID_LED_CAPS_LOCK BIT(1)
 
 static const struct device *const status_uart = DEVICE_DT_GET(STATUS_UART_NODE);
 
 static int current_wpm;
+static uint8_t current_leds;
 static uint8_t peripheral_batteries[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
 static bool peripheral_battery_seen[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
 
@@ -102,13 +105,14 @@ static void send_status_line(void) {
 
     char line[192];
     snprintf(line, sizeof(line),
-             "layer=%s usb=%d bt=%d bt_slot=%d ctrl=%d alt=%d win=%d shift=%d wpm=%d "
-             "peripherals=%d batt=",
+             "layer=%s usb=%d bt=%d bt_slot=%d ctrl=%d alt=%d win=%d shift=%d "
+             "capslock=%d wpm=%d peripherals=%d batt=",
              layer_value, usb_connected ? 1 : 0, bt_connected ? 1 : 0, bt_slot,
              (mods & (MOD_LCTL | MOD_RCTL)) ? 1 : 0,
              (mods & (MOD_LALT | MOD_RALT)) ? 1 : 0,
              (mods & (MOD_LGUI | MOD_RGUI)) ? 1 : 0,
-             (mods & (MOD_LSFT | MOD_RSFT)) ? 1 : 0, current_wpm, count);
+             (mods & (MOD_LSFT | MOD_RSFT)) ? 1 : 0,
+             (current_leds & HID_LED_CAPS_LOCK) ? 1 : 0, current_wpm, count);
 
     append_battery_list(line, sizeof(line), count);
     strncat(line, "\n", sizeof(line) - strlen(line) - 1);
@@ -128,6 +132,11 @@ static void periodic_status_work_handler(struct k_work *work) {
 }
 
 static int esp32_status_listener(const zmk_event_t *eh) {
+    const struct zmk_led_indicator_changed *led_event = as_zmk_led_indicator_changed(eh);
+    if (led_event != NULL) {
+        current_leds = led_event->leds;
+    }
+
 #if IS_ENABLED(CONFIG_ZMK_WPM)
     const struct zmk_wpm_state_changed *wpm_event = as_zmk_wpm_state_changed(eh);
     if (wpm_event != NULL) {
@@ -161,6 +170,7 @@ SYS_INIT(esp32_status_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 ZMK_LISTENER(esp32_status_uart, esp32_status_listener);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_layer_state_changed);
+ZMK_SUBSCRIPTION(esp32_status_uart, zmk_led_indicator_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_modifiers_state_changed);
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_wpm_state_changed);
