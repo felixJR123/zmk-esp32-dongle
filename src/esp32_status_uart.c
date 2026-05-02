@@ -12,13 +12,15 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
-#include <zmk/events/hid_indicators_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/modifiers_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/hid.h>
-#include <zmk/hid_indicators.h>
 #include <zmk/keymap.h>
+#if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
+#include <zmk/events/hid_indicators_changed.h>
+#include <zmk/hid_indicators.h>
+#endif
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 #include <zmk/events/wpm_state_changed.h>
 #endif
@@ -102,7 +104,11 @@ static void send_status_line(void) {
     bool usb_connected = zmk_usb_is_hid_ready();
     int count = peripheral_count();
     zmk_mod_flags_t mods = zmk_hid_get_explicit_mods();
-    zmk_hid_indicators_t indicators = zmk_hid_indicators_get_current_profile();
+#if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
+    int capslock = (zmk_hid_indicators_get_current_profile() & HID_LED_CAPS_LOCK) ? 1 : 0;
+#else
+    int capslock = 0;
+#endif
 
     char line[192];
     snprintf(line, sizeof(line),
@@ -113,7 +119,7 @@ static void send_status_line(void) {
              (mods & (MOD_LALT | MOD_RALT)) ? 1 : 0,
              (mods & (MOD_LGUI | MOD_RGUI)) ? 1 : 0,
              (mods & (MOD_LSFT | MOD_RSFT)) ? 1 : 0,
-             (indicators & HID_LED_CAPS_LOCK) ? 1 : 0, current_wpm, count);
+             capslock, current_wpm, count);
 
     append_battery_list(line, sizeof(line), count);
     strncat(line, "\n", sizeof(line) - strlen(line) - 1);
@@ -166,7 +172,9 @@ SYS_INIT(esp32_status_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 
 ZMK_LISTENER(esp32_status_uart, esp32_status_listener);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_layer_state_changed);
+#if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_hid_indicators_changed);
+#endif
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_modifiers_state_changed);
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_wpm_state_changed);
