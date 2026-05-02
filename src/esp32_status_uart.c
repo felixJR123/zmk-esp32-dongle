@@ -291,6 +291,8 @@ static void handle_command_line(const char *line) {
         }
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_BLE);
         send_status_now();
+        k_msleep(80);
+        send_status_now();
         return;
     }
 
