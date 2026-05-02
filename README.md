@@ -5,10 +5,20 @@ touch display over UART.
 
 ## Wiring
 
+**nice!nano v2**
+
 | nice!nano v2 | ESP32 screen |
 | --- | --- |
 | P0.06 TX | GPIO43 RXD |
 | P0.08 RX | GPIO44 TXD |
+| GND | GND |
+
+**Xiao BLE**
+
+| Xiao BLE | ESP32 screen |
+| --- | --- |
+| P1.11 TX (D6) | GPIO43 RXD |
+| P1.12 RX (D7) | GPIO44 TXD |
 | GND | GND |
 
 UART speed is `115200`.
