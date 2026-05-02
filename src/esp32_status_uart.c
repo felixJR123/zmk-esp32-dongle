@@ -15,8 +15,10 @@
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/modifiers_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
-#include <zmk/events/wpm_state_changed.h>
 #include <zmk/keymap.h>
+#if IS_ENABLED(CONFIG_ZMK_WPM)
+#include <zmk/events/wpm_state_changed.h>
+#endif
 #include <zmk/usb.h>
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
@@ -139,10 +141,12 @@ static int esp32_status_listener(const zmk_event_t *eh) {
         }
     }
 
+#if IS_ENABLED(CONFIG_ZMK_WPM)
     const struct zmk_wpm_state_changed *wpm_event = as_zmk_wpm_state_changed(eh);
     if (wpm_event != NULL) {
         current_wpm = wpm_event->state;
     }
+#endif
 
     const struct zmk_peripheral_battery_state_changed *battery_event =
         as_zmk_peripheral_battery_state_changed(eh);
@@ -171,7 +175,9 @@ SYS_INIT(esp32_status_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
 ZMK_LISTENER(esp32_status_uart, esp32_status_listener);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_layer_state_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_modifiers_state_changed);
+#if IS_ENABLED(CONFIG_ZMK_WPM)
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_wpm_state_changed);
+#endif
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_ble_active_profile_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_usb_conn_state_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_peripheral_battery_state_changed);
