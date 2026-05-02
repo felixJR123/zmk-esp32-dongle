@@ -208,6 +208,12 @@ static void send_deck_label_lines(void) {
     }
 }
 
+static void send_deck_result_line(int tile, int result) {
+    char line[48];
+    snprintf(line, sizeof(line), "deck_result=%d status=%s\n", tile, result < 0 ? "error" : "ok");
+    uart_write_string(line);
+}
+
 static void schedule_status_send(void) {
     k_work_reschedule(&send_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_EVENT_DELAY_MS));
 }
@@ -309,7 +315,9 @@ static void handle_command_line(const char *line) {
     }
 
     if (strstr(line, "cmd=deck") != NULL) {
-        invoke_deck_tile(command_tile_number(line));
+        int tile = command_tile_number(line);
+        int ret = invoke_deck_tile(tile);
+        send_deck_result_line(tile, ret);
         send_status_now();
         return;
     }

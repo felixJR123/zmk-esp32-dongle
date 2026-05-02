@@ -133,52 +133,51 @@ Put deck labels in your keyboard `.overlay` file, for example
 `config/your_keyboard.overlay`:
 
 ```dts
-/ {
-    esp32_deck {
-        compatible = "zmk,esp32-deck";
+#include <dt-bindings/zmk/keys.h>
 
-        tile_1 {
-            label = "Mute";
-        };
+&esp32_deck {
+    tile_1 {
+        label = "Mute";
+    };
 
-        tile_2 {
-            label = "Layer";
-        };
+    tile_2 {
+        label = "Layer";
+    };
 
-        tile_3 {
-            label = "Build";
-        };
+    tile_3 {
+        label = "Build";
+    };
 
-        tile_4 {
-            label = "Terminal";
-        };
+    tile_4 {
+        label = "Terminal";
+    };
 
-        tile_5 {
-            label = "Weather";
-        };
+    tile_5 {
+        label = "Weather";
+    };
 
-        tile_6 {
-            label = "Blank";
-        };
+    tile_6 {
+        label = "Blank";
+    };
 
-        tile_7 {
-            label = "Desktop";
-        };
+    tile_7 {
+        label = "Desktop";
+    };
 
-        tile_8 {
-            label = "Media";
-        };
+    tile_8 {
+        label = "Media";
+    };
 
-        tile_9 {
-            label = "Settings";
-        };
+    tile_9 {
+        label = "Settings";
     };
 };
 ```
 
-The ESP32 displays these labels when the SD card does not provide an explicit
-label or icon for that tile. If the SD card has `mute1.bmp`, `terminal4.bmp`, or
-a `/settings/deck.json` label, the SD card visual config wins.
+The shield creates the `&esp32_deck` node, so your keyboard overlay only fills in
+the tile settings. The ESP32 displays these labels when the SD card does not
+provide an icon for that tile. If the SD card has `mute1.bmp`, `terminal4.bmp`,
+or another tile icon, the SD card icon visual config wins.
 
 Optional `.conf` labels still work as a fallback or quick test:
 
@@ -269,7 +268,7 @@ actual keyboard behavior.
 Labels and actions both live in the same `.overlay` tile nodes:
 
 ```dts
-esp32_deck {
+&esp32_deck {
     tile_1 {
         label = "Mute";
         bindings = <&kp C_MUTE>;
@@ -345,16 +344,16 @@ Simple deck labels can be configured in your keyboard `.overlay` and sent to the
 display:
 
 ```dts
-/ {
-    esp32_deck {
-        compatible = "zmk,esp32-deck";
-
-        tile_1 {
-            label = "Mute";
-        };
+&esp32_deck {
+    tile_1 {
+        label = "Mute";
+        bindings = <&kp C_MUTE>;
     };
 };
 ```
+
+The shield creates `&esp32_deck`; your overlay just adds labels and optional
+bindings to each tile.
 
 The older `.conf` fallback also works:
 
