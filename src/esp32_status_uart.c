@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/device.h>
@@ -35,12 +36,16 @@ static const struct device *const status_uart = DEVICE_DT_GET(STATUS_UART_NODE);
 static int current_wpm;
 static uint8_t peripheral_batteries[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
 static bool peripheral_battery_seen[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
+static char command_line[96];
+static size_t command_line_len;
 
 static void send_status_work_handler(struct k_work *work);
 static void periodic_status_work_handler(struct k_work *work);
+static void receive_command_work_handler(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(send_status_work, send_status_work_handler);
 K_WORK_DELAYABLE_DEFINE(periodic_status_work, periodic_status_work_handler);
+K_WORK_DELAYABLE_DEFINE(receive_command_work, receive_command_work_handler);
 
 static void uart_write_string(const char *text) {
     for (const char *p = text; *p != '\0'; p++) {
@@ -103,6 +108,10 @@ static void send_status_line(void) {
     int bt_slot = zmk_ble_active_profile_index() + 1;
     bool bt_connected = zmk_ble_profile_is_connected(bt_slot - 1);
     bool usb_connected = zmk_usb_is_hid_ready();
+    enum zmk_transport preferred_transport = zmk_endpoint_get_preferred_transport();
+    const char *conn = preferred_transport == ZMK_TRANSPORT_USB
+                           ? "usb"
+                           : preferred_transport == ZMK_TRANSPORT_BLE ? "bt" : "none";
     int count = peripheral_count();
     zmk_mod_flags_t modifiers = zmk_hid_get_keyboard_report()->body.modifiers;
 #if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
@@ -113,14 +122,14 @@ static void send_status_line(void) {
 
     char line[192];
     snprintf(line, sizeof(line),
-             "layer=%s usb=%d bt=%d bt_slot=%d ctrl=%d alt=%d win=%d shift=%d "
-             "capslock=%d wpm=%d peripherals=%d batt=",
-             layer_value, usb_connected ? 1 : 0, bt_connected ? 1 : 0, bt_slot,
+             "layer=%s usb=%d bt=%d bt_slot=%d conn=%s ctrl=%d alt=%d win=%d shift=%d "
+             "capslock=%d wpm=%d bt_profiles=%d peripherals=%d batt=",
+             layer_value, usb_connected ? 1 : 0, bt_connected ? 1 : 0, bt_slot, conn,
              (modifiers & (MOD_LCTL | MOD_RCTL)) ? 1 : 0,
              (modifiers & (MOD_LALT | MOD_RALT)) ? 1 : 0,
              (modifiers & (MOD_LGUI | MOD_RGUI)) ? 1 : 0,
              (modifiers & (MOD_LSFT | MOD_RSFT)) ? 1 : 0,
-             capslock, current_wpm, count);
+             capslock, current_wpm, ZMK_BLE_PROFILE_COUNT, count);
 
     append_battery_list(line, sizeof(line), count);
     strncat(line, "\n", sizeof(line) - strlen(line) - 1);
@@ -141,6 +150,73 @@ static void send_status_work_handler(struct k_work *work) { send_status_line(); 
 static void periodic_status_work_handler(struct k_work *work) {
     send_status_line();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
+}
+
+static int command_profile_index(const char *line) {
+    const char *profile = strstr(line, "profile=");
+    if (profile == NULL) {
+        return zmk_ble_active_profile_index();
+    }
+
+    int one_based = atoi(profile + strlen("profile="));
+    if (one_based <= 0) {
+        return 0;
+    }
+    return one_based - 1;
+}
+
+static void handle_command_line(const char *line) {
+    if (strstr(line, "cmd=usb") != NULL) {
+        zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_USB);
+        send_status_now();
+        return;
+    }
+
+    if (strstr(line, "cmd=bt") != NULL) {
+        int profile = command_profile_index(line);
+        if (profile >= 0 && profile < ZMK_BLE_PROFILE_COUNT) {
+            zmk_ble_prof_select(profile);
+        }
+        zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_BLE);
+        send_status_now();
+        return;
+    }
+
+    if (strstr(line, "cmd=clear_profile") != NULL) {
+        zmk_ble_clear_bonds();
+        send_status_now();
+        return;
+    }
+
+    if (strstr(line, "cmd=clear_all_profiles") != NULL) {
+        zmk_ble_clear_all_bonds();
+        send_status_now();
+        return;
+    }
+}
+
+static void receive_command_work_handler(struct k_work *work) {
+    unsigned char c;
+    while (uart_poll_in(status_uart, &c) == 0) {
+        if (c == '\r') {
+            continue;
+        }
+        if (c == '\n') {
+            command_line[command_line_len] = '\0';
+            if (command_line_len > 0) {
+                handle_command_line(command_line);
+            }
+            command_line_len = 0;
+            continue;
+        }
+        if (command_line_len < sizeof(command_line) - 1) {
+            command_line[command_line_len++] = c;
+        } else {
+            command_line_len = 0;
+        }
+    }
+
+    k_work_reschedule(&receive_command_work, K_MSEC(30));
 }
 
 static int esp32_status_listener(const zmk_event_t *eh) {
@@ -183,6 +259,7 @@ static int esp32_status_init(void) {
 
     schedule_status_send();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
+    k_work_reschedule(&receive_command_work, K_MSEC(30));
     return 0;
 }
 

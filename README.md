@@ -40,7 +40,7 @@ and include `esp32_status_dongle` in the shield list for the nice!nano build.
 The module sends newline-terminated text packets:
 
 ```text
-layer=Default usb=1 bt=0 bt_slot=1 ctrl=0 alt=0 win=0 shift=0 capslock=0 wpm=42 peripherals=2 batt=91,88
+layer=Default usb=1 bt=0 bt_slot=1 conn=usb ctrl=0 alt=0 win=0 shift=0 capslock=0 wpm=42 bt_profiles=5 peripherals=2 batt=91,88
 ```
 
 The ESP32 display currently uses:
@@ -49,11 +49,27 @@ The ESP32 display currently uses:
 - `usb`
 - `bt`
 - `bt_slot`
+- `conn`, preferred transport: `usb`, `bt`, or `none`
 - `ctrl`, `alt`, `win`, `shift`
 - `capslock`
 - `wpm`
+- `bt_profiles`
 - `peripherals`
 - `batt`, comma-separated peripheral battery percentages
 
 If no split peripheral battery reports have arrived yet, the module sends
 `peripherals=0`.
+
+## Display Commands
+
+The ESP32 can send newline-terminated commands back to ZMK over the same UART:
+
+```text
+cmd=usb
+cmd=bt profile=1
+cmd=clear_profile
+cmd=clear_all_profiles
+```
+
+Profile numbers are one-based on the display, so `profile=1` selects ZMK BLE
+profile index `0`.
