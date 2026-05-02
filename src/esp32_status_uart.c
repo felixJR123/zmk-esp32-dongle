@@ -9,6 +9,7 @@
 #include <zephyr/sys/util.h>
 
 #include <zmk/ble.h>
+#include <zmk/behavior.h>
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/battery_state_changed.h>
@@ -16,6 +17,7 @@
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/modifiers_state_changed.h>
+#include <zmk/events/position_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
 #include <zmk/hid.h>
 #include <zmk/keymap.h>
@@ -41,6 +43,14 @@
 #define ESP32_DECK_TILE_9_NODE DT_PATH(esp32_deck, tile_9)
 #define ESP32_DECK_TILE_LABEL(node, fallback)                                                      \
     COND_CODE_1(DT_NODE_EXISTS(node), (DT_PROP_OR(node, label, fallback)), (fallback))
+#define ESP32_DECK_EMPTY_BINDING                                                                   \
+    { .behavior_dev = NULL, .param1 = 0, .param2 = 0 }
+#define ESP32_DECK_TILE_BINDING(node)                                                              \
+    COND_CODE_1(DT_NODE_EXISTS(node),                                                              \
+                (COND_CODE_1(DT_NODE_HAS_PROP(node, bindings),                                     \
+                             (ZMK_KEYMAP_EXTRACT_BINDING(0, node)),                                \
+                             (ESP32_DECK_EMPTY_BINDING))),                                         \
+                (ESP32_DECK_EMPTY_BINDING))
 
 static const struct device *const status_uart = DEVICE_DT_GET(STATUS_UART_NODE);
 
@@ -59,6 +69,17 @@ static const char *const deck_tile_labels[] = {
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_7_NODE, CONFIG_ZMK_ESP32_DECK_TILE_7_LABEL),
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_8_NODE, CONFIG_ZMK_ESP32_DECK_TILE_8_LABEL),
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_9_NODE, CONFIG_ZMK_ESP32_DECK_TILE_9_LABEL),
+};
+static const struct zmk_behavior_binding deck_tile_bindings[] = {
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_1_NODE),
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_2_NODE),
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_3_NODE),
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_4_NODE),
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_5_NODE),
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_6_NODE),
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_7_NODE),
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_8_NODE),
+    ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_9_NODE),
 };
 
 static void send_status_work_handler(struct k_work *work);
@@ -211,6 +232,46 @@ static int command_profile_index(const char *line) {
     return one_based - 1;
 }
 
+static int command_tile_number(const char *line) {
+    const char *tile = strstr(line, "tile=");
+    if (tile == NULL) {
+        return 0;
+    }
+
+    return atoi(tile + strlen("tile="));
+}
+
+static int invoke_deck_tile(int tile) {
+    if (tile < 1 || tile > ARRAY_SIZE(deck_tile_bindings)) {
+        return -EINVAL;
+    }
+
+    const struct zmk_behavior_binding *binding = &deck_tile_bindings[tile - 1];
+    if (binding->behavior_dev == NULL) {
+        return -ENOENT;
+    }
+
+    zmk_keymap_layer_index_t layer_index = zmk_keymap_highest_layer_active();
+    zmk_keymap_layer_id_t layer_id = zmk_keymap_layer_index_to_id(layer_index);
+    struct zmk_behavior_binding_event event = {
+        .layer = layer_id,
+        .position = 0xE000 + tile,
+        .timestamp = k_uptime_get(),
+#if IS_ENABLED(CONFIG_ZMK_SPLIT)
+        .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+#endif
+    };
+
+    int ret = zmk_behavior_invoke_binding(binding, event, true);
+    if (ret < 0) {
+        return ret;
+    }
+
+    k_msleep(10);
+    event.timestamp = k_uptime_get();
+    return zmk_behavior_invoke_binding(binding, event, false);
+}
+
 static void handle_command_line(const char *line) {
     if (strstr(line, "cmd=usb") != NULL) {
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_USB);
@@ -241,6 +302,7 @@ static void handle_command_line(const char *line) {
     }
 
     if (strstr(line, "cmd=deck") != NULL) {
+        invoke_deck_tile(command_tile_number(line));
         send_status_now();
         return;
     }

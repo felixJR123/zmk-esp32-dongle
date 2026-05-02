@@ -19,7 +19,7 @@ Current features:
 - sends the number of configured Bluetooth host profiles
 - receives commands from the ESP32 to switch USB/Bluetooth profiles
 - receives commands from the ESP32 to clear the active host profile or all host profiles
-- receives deck tile presses from the ESP32
+- receives deck tile presses from the ESP32 and invokes configured ZMK bindings
 - sends simple deck tile labels from ZMK config to the ESP32
 
 The ESP32 still owns the visual side of the deck profile: icons, colors,
@@ -234,7 +234,7 @@ cmd=clear_all_profiles
 Peripherals are intentionally not cleared by these commands. Use a full ZMK
 settings reset when you really want to remove peripheral pairing information.
 
-### 5. Current Deck Action Behavior
+### 5. Deck Action Behavior
 
 When you press a deck tile, the ESP32 sends:
 
@@ -242,17 +242,13 @@ When you press a deck tile, the ESP32 sends:
 cmd=deck tile=1
 ```
 
-At the moment, the module receives that command and refreshes status. The next
-piece is to map `tile=1`, `tile=2`, etc. to real ZMK behaviors/macros from your
-keyboard config, so actions can stay in ZMK instead of on the ESP32.
-
-The current module receives `cmd=deck tile=N` and refreshes status. It does not
-yet invoke ZMK behaviors from that tile number.
+The module looks up `tile_1`, presses its `bindings`, waits briefly, then
+releases the same binding. That lets the ESP32 stay simple while ZMK owns the
+actual keyboard behavior.
 
 ### 6. Deck Actions In `.overlay`
 
-Labels already work from `.overlay`. The next step is making actions work there
-too. The planned setup looks like this:
+Labels and actions both live in the same `.overlay` tile nodes:
 
 ```dts
 esp32_deck {
@@ -268,9 +264,7 @@ esp32_deck {
 };
 ```
 
-The `bindings` property is accepted by the devicetree binding now, but invoking
-those bindings from `cmd=deck tile=N` is not implemented yet. Real actions should
-be devicetree bindings so tiles can run normal ZMK behavior such as:
+The `bindings` property can run normal ZMK behavior such as:
 
 ```dts
 bindings = <&kp C_MUTE>;
@@ -278,8 +272,7 @@ bindings = <&to 1>;
 bindings = <&macro_my_custom_macro>;
 ```
 
-Until the behavior-invocation layer is added, use `.overlay` labels for screen
-text and keep real deck actions on the roadmap.
+If a tile has no `bindings`, pressing it on the ESP32 only refreshes status.
 
 ## Status Protocol
 
