@@ -15,10 +15,12 @@ Current features:
 - sends modifier state: Ctrl, Alt, GUI/Win, Shift
 - sends Caps Lock state when ZMK HID indicators are enabled
 - sends WPM when ZMK WPM is enabled
+- sends display wake/sleep state as `display=on` or `display=off`
 - sends split peripheral battery reports when available
 - sends the number of configured Bluetooth host profiles
 - receives commands from the ESP32 to switch USB/Bluetooth profiles
 - receives commands from the ESP32 to clear the active host profile or all host profiles
+- receives a wake command from the ESP32 touchscreen
 - receives deck tile presses from the ESP32 and invokes configured ZMK bindings
 - sends simple deck tile labels from ZMK config to the ESP32
 
@@ -63,6 +65,16 @@ and include `esp32_status_dongle` in the shield list for the nice!nano build.
 Most users should modify their keyboard firmware repo, not this module. The
 module provides the shield and UART code; your keyboard config chooses to include
 it and sets any labels/options you want.
+
+To make the ESP32 screen and backlight turn off after 5 minutes of inactivity,
+set the normal ZMK idle timeout in your keyboard `.conf`:
+
+```conf
+CONFIG_ZMK_IDLE_TIMEOUT=300000
+```
+
+The ESP32 still owns brightness. ZMK only sends whether the display should be on
+or off; Settings > Backlight on the screen controls the local backlight level.
 
 ### 1. Add The Module To `config/west.yml`
 
@@ -234,6 +246,12 @@ cmd=clear_all_profiles
 Peripherals are intentionally not cleared by these commands. Use a full ZMK
 settings reset when you really want to remove peripheral pairing information.
 
+Wake the dongle from a screen touch:
+
+```text
+cmd=wake
+```
+
 ### 5. Deck Action Behavior
 
 When you press a deck tile, the ESP32 sends:
@@ -279,7 +297,7 @@ If a tile has no `bindings`, pressing it on the ESP32 only refreshes status.
 The module sends newline-terminated text packets:
 
 ```text
-layer=Default usb=1 bt=0 bt_slot=1 conn=usb ctrl=0 alt=0 win=0 shift=0 capslock=0 wpm=42 bt_profiles=5 peripherals=2 batt=91,88
+layer=Default usb=1 bt=0 bt_slot=1 conn=usb ctrl=0 alt=0 win=0 shift=0 capslock=0 wpm=42 display=on bt_profiles=5 peripherals=2 batt=91,88
 ```
 
 The ESP32 display currently uses:
@@ -292,6 +310,7 @@ The ESP32 display currently uses:
 - `ctrl`, `alt`, `win`, `shift`
 - `capslock`
 - `wpm`
+- `display`, `on` while ZMK is active and `off` while ZMK is idle or asleep
 - `bt_profiles`
 - `peripherals`
 - `batt`, comma-separated peripheral battery percentages
@@ -308,6 +327,7 @@ cmd=usb
 cmd=bt profile=1
 cmd=clear_profile
 cmd=clear_all_profiles
+cmd=wake
 ```
 
 Profile numbers are one-based on the display, so `profile=1` selects ZMK BLE

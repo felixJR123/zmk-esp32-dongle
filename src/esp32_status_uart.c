@@ -8,12 +8,14 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 
+#include <zmk/activity.h>
 #include <zmk/ble.h>
 #include <zmk/behavior.h>
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
+#include <zmk/events/activity_state_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/modifiers_state_changed.h>
@@ -81,6 +83,7 @@ static const struct zmk_behavior_binding deck_tile_bindings[] = {
     ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_8_NODE),
     ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_9_NODE),
 };
+extern int set_state(enum zmk_activity_state state);
 
 static void send_status_work_handler(struct k_work *work);
 static void periodic_status_work_handler(struct k_work *work);
@@ -156,6 +159,8 @@ static void send_status_line(void) {
                            ? "usb"
                            : preferred_transport == ZMK_TRANSPORT_BLE ? "bt" : "none";
     int count = peripheral_count();
+    enum zmk_activity_state activity = zmk_activity_get_state();
+    const char *display = activity == ZMK_ACTIVITY_ACTIVE ? "on" : "off";
     zmk_mod_flags_t modifiers = zmk_hid_get_keyboard_report()->body.modifiers;
 #if IS_ENABLED(CONFIG_ZMK_HID_INDICATORS)
     int capslock = (zmk_hid_indicators_get_current_profile() & HID_LED_CAPS_LOCK) ? 1 : 0;
@@ -166,13 +171,13 @@ static void send_status_line(void) {
     char line[192];
     snprintf(line, sizeof(line),
              "layer=%s usb=%d bt=%d bt_slot=%d conn=%s ctrl=%d alt=%d win=%d shift=%d "
-             "capslock=%d wpm=%d bt_profiles=%d peripherals=%d batt=",
+             "capslock=%d wpm=%d display=%s bt_profiles=%d peripherals=%d batt=",
              layer_value, usb_connected ? 1 : 0, bt_connected ? 1 : 0, bt_slot, conn,
              (modifiers & (MOD_LCTL | MOD_RCTL)) ? 1 : 0,
              (modifiers & (MOD_LALT | MOD_RALT)) ? 1 : 0,
              (modifiers & (MOD_LGUI | MOD_RGUI)) ? 1 : 0,
              (modifiers & (MOD_LSFT | MOD_RSFT)) ? 1 : 0,
-             capslock, current_wpm, ZMK_BLE_PROFILE_COUNT, count);
+             capslock, current_wpm, display, ZMK_BLE_PROFILE_COUNT, count);
 
     append_battery_list(line, sizeof(line), count);
     strncat(line, "\n", sizeof(line) - strlen(line) - 1);
@@ -306,6 +311,12 @@ static void handle_command_line(const char *line) {
         send_status_now();
         return;
     }
+
+    if (strstr(line, "cmd=wake") != NULL) {
+        set_state(ZMK_ACTIVITY_ACTIVE);
+        send_status_now();
+        return;
+    }
 }
 
 static void receive_command_work_handler(struct k_work *work) {
@@ -345,6 +356,11 @@ static int esp32_status_listener(const zmk_event_t *eh) {
         return 0;
     }
 #endif
+
+    if (as_zmk_activity_state_changed(eh) != NULL) {
+        send_status_now();
+        return 0;
+    }
 
 #if IS_ENABLED(CONFIG_ZMK_WPM)
     const struct zmk_wpm_state_changed *wpm_event = as_zmk_wpm_state_changed(eh);
@@ -392,3 +408,4 @@ ZMK_SUBSCRIPTION(esp32_status_uart, zmk_wpm_state_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_ble_active_profile_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_usb_conn_state_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_peripheral_battery_state_changed);
+ZMK_SUBSCRIPTION(esp32_status_uart, zmk_activity_state_changed);
