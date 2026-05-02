@@ -3,6 +3,29 @@
 This is a stackable ZMK module/shield that sends keyboard status to the ESP32-S3
 touch display over UART.
 
+The ESP32 screen can show keyboard state from ZMK and can also send simple
+commands back to ZMK.
+
+Current features:
+
+- sends active layer name
+- sends USB/Bluetooth connection state
+- sends selected Bluetooth profile
+- sends preferred transport as `conn=usb`, `conn=bt`, or `conn=none`
+- sends modifier state: Ctrl, Alt, GUI/Win, Shift
+- sends Caps Lock state when ZMK HID indicators are enabled
+- sends WPM when ZMK WPM is enabled
+- sends split peripheral battery reports when available
+- sends the number of configured Bluetooth host profiles
+- receives commands from the ESP32 to switch USB/Bluetooth profiles
+- receives commands from the ESP32 to clear the active host profile or all host profiles
+- receives deck tile presses from the ESP32
+- sends simple deck tile labels from ZMK config to the ESP32
+
+The ESP32 still owns the visual side of the deck profile: icons, colors,
+transparency, and SD card picture assets. If the SD card has an icon or explicit
+label for a tile, that SD card visual config wins over labels sent by ZMK.
+
 ## Wiring
 
 **nice!nano v2**
@@ -104,13 +127,67 @@ CONFIG_ZMK_ESP32_DECK_TILE_3_LABEL="Build"
 CONFIG_ZMK_ESP32_DECK_TILE_4_LABEL="Terminal"
 CONFIG_ZMK_ESP32_DECK_TILE_5_LABEL="Weather"
 CONFIG_ZMK_ESP32_DECK_TILE_6_LABEL="Blank"
+CONFIG_ZMK_ESP32_DECK_TILE_7_LABEL="Desktop"
+CONFIG_ZMK_ESP32_DECK_TILE_8_LABEL="Media"
+CONFIG_ZMK_ESP32_DECK_TILE_9_LABEL="Settings"
 ```
 
 The ESP32 displays these labels when the SD card does not provide an explicit
 label or icon for that tile. If the SD card has `mute1.bmp`, `terminal4.bmp`, or
 a `/settings/deck.json` label, the SD card visual config wins.
 
-### 4. Current Deck Action Behavior
+All nine label options are available:
+
+```conf
+CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL="Tile 1"
+CONFIG_ZMK_ESP32_DECK_TILE_2_LABEL="Tile 2"
+CONFIG_ZMK_ESP32_DECK_TILE_3_LABEL="Tile 3"
+CONFIG_ZMK_ESP32_DECK_TILE_4_LABEL="Tile 4"
+CONFIG_ZMK_ESP32_DECK_TILE_5_LABEL="Tile 5"
+CONFIG_ZMK_ESP32_DECK_TILE_6_LABEL="Tile 6"
+CONFIG_ZMK_ESP32_DECK_TILE_7_LABEL="Tile 7"
+CONFIG_ZMK_ESP32_DECK_TILE_8_LABEL="Tile 8"
+CONFIG_ZMK_ESP32_DECK_TILE_9_LABEL="Tile 9"
+```
+
+### 4. What The ESP32 Sends Back To ZMK
+
+The ESP32 sends one-line UART commands back to ZMK.
+
+Switch to USB:
+
+```text
+cmd=usb
+```
+
+Switch to Bluetooth profile 1:
+
+```text
+cmd=bt profile=1
+```
+
+Switch to Bluetooth profile 5:
+
+```text
+cmd=bt profile=5
+```
+
+Clear only the currently selected Bluetooth host profile:
+
+```text
+cmd=clear_profile
+```
+
+Clear all Bluetooth host profiles:
+
+```text
+cmd=clear_all_profiles
+```
+
+Peripherals are intentionally not cleared by these commands. Use a full ZMK
+settings reset when you really want to remove peripheral pairing information.
+
+### 5. Current Deck Action Behavior
 
 When you press a deck tile, the ESP32 sends:
 
@@ -122,7 +199,14 @@ At the moment, the module receives that command and refreshes status. The next
 piece is to map `tile=1`, `tile=2`, etc. to real ZMK behaviors/macros from your
 keyboard config, so actions can stay in ZMK instead of on the ESP32.
 
-Planned shape:
+The current module receives `cmd=deck tile=N` and refreshes status. It does not
+yet invoke ZMK behaviors from that tile number.
+
+### 6. Can Deck Setup Use `.overlay` Instead Of `.conf`?
+
+Yes. That is the better long-term shape for deck actions because ZMK behaviors
+and macros are naturally configured in devicetree overlays. The planned setup
+would look like this in your keyboard `.overlay`:
 
 ```dts
 esp32_deck {
@@ -138,7 +222,19 @@ esp32_deck {
 };
 ```
 
-That binding layer is not implemented yet.
+That `.overlay` binding layer is not implemented yet. The current implementation
+uses `.conf` for simple labels only. The reason is practical: labels are quick
+to expose through Kconfig, but real actions should be devicetree bindings so
+tiles can run normal ZMK behavior such as:
+
+```dts
+bindings = <&kp C_MUTE>;
+bindings = <&to 1>;
+bindings = <&macro_my_custom_macro>;
+```
+
+Until the binding layer is added, use `.conf` labels for the screen text and keep
+real deck actions on the roadmap.
 
 ## Status Protocol
 
@@ -193,6 +289,12 @@ Simple deck labels can be configured in ZMK Kconfig and sent to the display:
 CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL="Mute"
 CONFIG_ZMK_ESP32_DECK_TILE_2_LABEL="Layer"
 CONFIG_ZMK_ESP32_DECK_TILE_3_LABEL="Build"
+CONFIG_ZMK_ESP32_DECK_TILE_4_LABEL="Terminal"
+CONFIG_ZMK_ESP32_DECK_TILE_5_LABEL="Weather"
+CONFIG_ZMK_ESP32_DECK_TILE_6_LABEL="Blank"
+CONFIG_ZMK_ESP32_DECK_TILE_7_LABEL="Desktop"
+CONFIG_ZMK_ESP32_DECK_TILE_8_LABEL="Media"
+CONFIG_ZMK_ESP32_DECK_TILE_9_LABEL="Settings"
 ```
 
 The module sends them as:
