@@ -2,5 +2,6 @@ name: zmk-esp32-dongle
 build:
   cmake: .
   kconfig: Kconfig
-  board_root: .
-  dts_root: .
+  settings:
+    board_root: .
+    dts_root: .
