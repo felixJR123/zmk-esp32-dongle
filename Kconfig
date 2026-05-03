@@ -44,6 +44,18 @@ config ZMK_ESP32_BT_PROFILE_5_LABEL
     string "BT profile 5 display label"
     default ""
 
+config ZMK_ESP32_BT_PROFILE_6_LABEL
+    string "BT profile 6 display label"
+    default ""
+
+config ZMK_ESP32_BT_PROFILE_7_LABEL
+    string "BT profile 7 display label"
+    default ""
+
+config ZMK_ESP32_BT_PROFILE_8_LABEL
+    string "BT profile 8 display label"
+    default ""
+
 config ZMK_ESP32_DECK_TILE_1_LABEL
     string "ESP32 deck tile 1 label"
     default "Tile 1"

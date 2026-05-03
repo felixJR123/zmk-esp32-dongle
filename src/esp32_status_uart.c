@@ -81,12 +81,19 @@ static const char *const deck_tile_labels[] = {
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_8_NODE, CONFIG_ZMK_ESP32_DECK_TILE_8_LABEL),
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_9_NODE, CONFIG_ZMK_ESP32_DECK_TILE_9_LABEL),
 };
+/* Up to 8 host BT profile labels (peripherals are not counted).
+ * Set labels via the bt_profile_names DTS node in your keyboard overlay,
+ * or via CONFIG_ZMK_ESP32_BT_PROFILE_N_LABEL in your .conf file.
+ * Empty labels are skipped; the screen falls back to "BTN" automatically. */
 static const char *const bt_profile_names[] = {
     BT_PROFILE_NAME_LABEL(1, CONFIG_ZMK_ESP32_BT_PROFILE_1_LABEL),
     BT_PROFILE_NAME_LABEL(2, CONFIG_ZMK_ESP32_BT_PROFILE_2_LABEL),
     BT_PROFILE_NAME_LABEL(3, CONFIG_ZMK_ESP32_BT_PROFILE_3_LABEL),
     BT_PROFILE_NAME_LABEL(4, CONFIG_ZMK_ESP32_BT_PROFILE_4_LABEL),
     BT_PROFILE_NAME_LABEL(5, CONFIG_ZMK_ESP32_BT_PROFILE_5_LABEL),
+    BT_PROFILE_NAME_LABEL(6, CONFIG_ZMK_ESP32_BT_PROFILE_6_LABEL),
+    BT_PROFILE_NAME_LABEL(7, CONFIG_ZMK_ESP32_BT_PROFILE_7_LABEL),
+    BT_PROFILE_NAME_LABEL(8, CONFIG_ZMK_ESP32_BT_PROFILE_8_LABEL),
 };
 
 static const struct zmk_behavior_binding deck_tile_bindings[] = {
