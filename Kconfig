@@ -24,6 +24,26 @@ config ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS
     default 6
     range 1 9
 
+config ZMK_ESP32_BT_PROFILE_1_LABEL
+    string "BT profile 1 display label"
+    default ""
+
+config ZMK_ESP32_BT_PROFILE_2_LABEL
+    string "BT profile 2 display label"
+    default ""
+
+config ZMK_ESP32_BT_PROFILE_3_LABEL
+    string "BT profile 3 display label"
+    default ""
+
+config ZMK_ESP32_BT_PROFILE_4_LABEL
+    string "BT profile 4 display label"
+    default ""
+
+config ZMK_ESP32_BT_PROFILE_5_LABEL
+    string "BT profile 5 display label"
+    default ""
+
 config ZMK_ESP32_DECK_TILE_1_LABEL
     string "ESP32 deck tile 1 label"
     default "Tile 1"

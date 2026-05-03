@@ -1,0 +1,10 @@
+description: BT profile display names for ESP32 status dongle
+
+compatible: "zmk,bt-profile-names"
+
+child-binding:
+  description: A named BT profile entry
+  properties:
+    label:
+      type: string
+      required: true

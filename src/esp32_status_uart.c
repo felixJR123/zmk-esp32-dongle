@@ -35,6 +35,12 @@
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
 #define HID_LED_CAPS_LOCK BIT(1)
+#define BT_PROFILE_NAMES_NODE DT_PATH(bt_profile_names)
+#define BT_PROFILE_NAME_NODE(n) DT_PATH(bt_profile_names, profile_##n)
+#define BT_PROFILE_NAME_LABEL(n, fallback)                                                         \
+    COND_CODE_1(DT_NODE_EXISTS(BT_PROFILE_NAME_NODE(n)),                                           \
+                (DT_PROP_OR(BT_PROFILE_NAME_NODE(n), label, fallback)), (fallback))
+
 #define ESP32_DECK_TILE_1_NODE DT_PATH(esp32_deck, tile_1)
 #define ESP32_DECK_TILE_2_NODE DT_PATH(esp32_deck, tile_2)
 #define ESP32_DECK_TILE_3_NODE DT_PATH(esp32_deck, tile_3)
@@ -75,6 +81,14 @@ static const char *const deck_tile_labels[] = {
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_8_NODE, CONFIG_ZMK_ESP32_DECK_TILE_8_LABEL),
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_9_NODE, CONFIG_ZMK_ESP32_DECK_TILE_9_LABEL),
 };
+static const char *const bt_profile_names[] = {
+    BT_PROFILE_NAME_LABEL(1, CONFIG_ZMK_ESP32_BT_PROFILE_1_LABEL),
+    BT_PROFILE_NAME_LABEL(2, CONFIG_ZMK_ESP32_BT_PROFILE_2_LABEL),
+    BT_PROFILE_NAME_LABEL(3, CONFIG_ZMK_ESP32_BT_PROFILE_3_LABEL),
+    BT_PROFILE_NAME_LABEL(4, CONFIG_ZMK_ESP32_BT_PROFILE_4_LABEL),
+    BT_PROFILE_NAME_LABEL(5, CONFIG_ZMK_ESP32_BT_PROFILE_5_LABEL),
+};
+
 static const struct zmk_behavior_binding deck_tile_bindings[] = {
     ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_1_NODE),
     ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_2_NODE),
@@ -218,6 +232,26 @@ static void send_deck_label_lines(void) {
     }
 }
 
+static void send_bt_profile_name_line(int profile, const char *name) {
+    if (name == NULL || name[0] == '\0') {
+        return;
+    }
+    char safe_name[48];
+    sanitize_value(name, safe_name, sizeof(safe_name));
+    char line[72];
+    snprintf(line, sizeof(line), "bt_name=%d label=%s\n", profile, safe_name);
+    uart_write_string(line);
+}
+
+static void send_bt_profile_name_lines(void) {
+    if (!device_is_ready(status_uart)) {
+        return;
+    }
+    for (int i = 0; i < ARRAY_SIZE(bt_profile_names); i++) {
+        send_bt_profile_name_line(i + 1, bt_profile_names[i]);
+    }
+}
+
 static void send_deck_result_line(int tile, int result) {
     char line[48];
     snprintf(line, sizeof(line), "deck_result=%d status=%s code=%d\n", tile,
@@ -261,6 +295,7 @@ static void send_status_work_handler(struct k_work *work) { send_status_line(); 
 static void periodic_status_work_handler(struct k_work *work) {
     send_status_line();
     send_deck_label_lines();
+    send_bt_profile_name_lines();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
 }
 
@@ -508,6 +543,7 @@ static int esp32_status_init(void) {
 
     schedule_status_send();
     send_deck_label_lines();
+    send_bt_profile_name_lines();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
     return 0;
 }
