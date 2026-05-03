@@ -220,6 +220,29 @@ static void send_deck_result_line(int tile, int result) {
     uart_write_string(line);
 }
 
+static void send_command_ack_line(const char *command)
+{
+    const char *name = "unknown";
+
+    if (strstr(command, "cmd=usb") != NULL) {
+        name = "usb";
+    } else if (strstr(command, "cmd=bt") != NULL) {
+        name = "bt";
+    } else if (strstr(command, "cmd=deck") != NULL) {
+        name = "deck";
+    } else if (strstr(command, "cmd=clear_profile") != NULL) {
+        name = "clear_profile";
+    } else if (strstr(command, "cmd=clear_all_profiles") != NULL) {
+        name = "clear_all_profiles";
+    } else if (strstr(command, "cmd=wake") != NULL) {
+        name = "wake";
+    }
+
+    char line[40];
+    snprintf(line, sizeof(line), "cmd_ack=%s\n", name);
+    uart_write_string(line);
+}
+
 static void schedule_status_send(void) {
     k_work_reschedule(&send_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_EVENT_DELAY_MS));
 }
@@ -290,6 +313,8 @@ static int invoke_deck_tile(int tile) {
 }
 
 static void handle_command_line(const char *line) {
+    send_command_ack_line(line);
+
     if (strstr(line, "cmd=usb") != NULL) {
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_USB);
         send_status_now();
