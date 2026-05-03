@@ -1,0 +1,15 @@
+description: ESP32 deck menu tiles — subtile bindings for the ESP32 touchscreen dongle
+
+compatible: "zmk,esp32-deck-menu-tiles"
+
+child-binding:
+  description: A menu tile container (any of the 9 main deck tiles marked as menu tile)
+  child-binding:
+    description: A subtile within a menu tile
+    properties:
+      label:
+        type: string
+        required: false
+      bindings:
+        type: phandle-array
+        required: true

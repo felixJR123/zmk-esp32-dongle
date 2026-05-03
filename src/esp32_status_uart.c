@@ -61,6 +61,29 @@
                              (ESP32_DECK_EMPTY_BINDING))),                                         \
                 (ESP32_DECK_EMPTY_BINDING))
 
+/* Sub-tile DT helpers: esp32_deck_menu_tiles / menu_tile_M / subtile_S */
+#define ESP32_SUBTILE_NODE(m, s) \
+    DT_PATH(esp32_deck_menu_tiles, menu_tile_##m, subtile_##s)
+#define ESP32_SUBTILE_BINDING(m, s)                                                                \
+    COND_CODE_1(DT_NODE_EXISTS(ESP32_SUBTILE_NODE(m, s)),                                          \
+                (COND_CODE_1(DT_NODE_HAS_PROP(ESP32_SUBTILE_NODE(m, s), bindings),                 \
+                             (ZMK_KEYMAP_EXTRACT_BINDING(0, ESP32_SUBTILE_NODE(m, s))),            \
+                             (ESP32_DECK_EMPTY_BINDING))),                                         \
+                (ESP32_DECK_EMPTY_BINDING))
+#define ESP32_SUBTILE_LABEL(m, s, fb)                                                              \
+    COND_CODE_1(DT_NODE_EXISTS(ESP32_SUBTILE_NODE(m, s)),                                          \
+                (DT_PROP_OR(ESP32_SUBTILE_NODE(m, s), label, fb)), (fb))
+#define ESP32_SUBTILE_BINDINGS_ROW(m) {                                                            \
+    ESP32_SUBTILE_BINDING(m, 1), ESP32_SUBTILE_BINDING(m, 2), ESP32_SUBTILE_BINDING(m, 3),        \
+    ESP32_SUBTILE_BINDING(m, 4), ESP32_SUBTILE_BINDING(m, 5), ESP32_SUBTILE_BINDING(m, 6),        \
+    ESP32_SUBTILE_BINDING(m, 7), ESP32_SUBTILE_BINDING(m, 8), ESP32_SUBTILE_BINDING(m, 9),        \
+}
+#define ESP32_SUBTILE_LABELS_ROW(m) {                                                              \
+    ESP32_SUBTILE_LABEL(m, 1, ""), ESP32_SUBTILE_LABEL(m, 2, ""), ESP32_SUBTILE_LABEL(m, 3, ""),  \
+    ESP32_SUBTILE_LABEL(m, 4, ""), ESP32_SUBTILE_LABEL(m, 5, ""), ESP32_SUBTILE_LABEL(m, 6, ""),  \
+    ESP32_SUBTILE_LABEL(m, 7, ""), ESP32_SUBTILE_LABEL(m, 8, ""), ESP32_SUBTILE_LABEL(m, 9, ""),  \
+}
+
 static const struct device *const status_uart = DEVICE_DT_GET(STATUS_UART_NODE);
 
 static int current_wpm;
@@ -107,6 +130,31 @@ static const struct zmk_behavior_binding deck_tile_bindings[] = {
     ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_8_NODE),
     ESP32_DECK_TILE_BINDING(ESP32_DECK_TILE_9_NODE),
 };
+
+static const struct zmk_behavior_binding sub_tile_bindings[9][9] = {
+    ESP32_SUBTILE_BINDINGS_ROW(1),
+    ESP32_SUBTILE_BINDINGS_ROW(2),
+    ESP32_SUBTILE_BINDINGS_ROW(3),
+    ESP32_SUBTILE_BINDINGS_ROW(4),
+    ESP32_SUBTILE_BINDINGS_ROW(5),
+    ESP32_SUBTILE_BINDINGS_ROW(6),
+    ESP32_SUBTILE_BINDINGS_ROW(7),
+    ESP32_SUBTILE_BINDINGS_ROW(8),
+    ESP32_SUBTILE_BINDINGS_ROW(9),
+};
+
+static const char *const sub_tile_labels[9][9] = {
+    ESP32_SUBTILE_LABELS_ROW(1),
+    ESP32_SUBTILE_LABELS_ROW(2),
+    ESP32_SUBTILE_LABELS_ROW(3),
+    ESP32_SUBTILE_LABELS_ROW(4),
+    ESP32_SUBTILE_LABELS_ROW(5),
+    ESP32_SUBTILE_LABELS_ROW(6),
+    ESP32_SUBTILE_LABELS_ROW(7),
+    ESP32_SUBTILE_LABELS_ROW(8),
+    ESP32_SUBTILE_LABELS_ROW(9),
+};
+
 extern int set_state(enum zmk_activity_state state);
 
 static void send_status_work_handler(struct k_work *work);
@@ -239,6 +287,33 @@ static void send_deck_label_lines(void) {
     }
 }
 
+static void send_sub_tile_label_line(int parent, int sub, const char *label)
+{
+    if (label == NULL || label[0] == '\0') {
+        return;
+    }
+
+    char safe_label[48];
+    sanitize_value(label, safe_label, sizeof(safe_label));
+
+    char line[80];
+    snprintf(line, sizeof(line), "sub_tile_label=%d_%d label=%s\n", parent, sub, safe_label);
+    uart_write_string(line);
+}
+
+static void send_sub_tile_label_lines(void)
+{
+    if (!device_is_ready(status_uart)) {
+        return;
+    }
+
+    for (int m = 0; m < 9; m++) {
+        for (int s = 0; s < 9; s++) {
+            send_sub_tile_label_line(m + 1, s + 1, sub_tile_labels[m][s]);
+        }
+    }
+}
+
 static void send_bt_profile_name_line(int profile, const char *name) {
     if (name == NULL || name[0] == '\0') {
         return;
@@ -303,6 +378,7 @@ static void send_status_work_handler(struct k_work *work) { send_status_line(); 
 static void periodic_status_work_handler(struct k_work *work) {
     send_status_line();
     send_deck_label_lines();
+    send_sub_tile_label_lines();
     send_bt_profile_name_lines();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
 }
@@ -327,6 +403,22 @@ static int command_tile_number(const char *line) {
     }
 
     return atoi(tile + strlen("tile="));
+}
+
+static void parse_tile_spec(const char *line, int *parent, int *sub)
+{
+    *parent = 0;
+    *sub = 0;
+    const char *tile = strstr(line, "tile=");
+    if (tile == NULL) {
+        return;
+    }
+    tile += strlen("tile=");
+    *parent = atoi(tile);
+    const char *underscore = strchr(tile, '_');
+    if (underscore != NULL) {
+        *sub = atoi(underscore + 1);
+    }
 }
 
 static void queue_received_command(void)
@@ -392,6 +484,38 @@ static int invoke_deck_tile(int tile) {
     return zmk_behavior_invoke_binding(binding, event, false);
 }
 
+static int invoke_sub_tile(int parent, int sub)
+{
+    if (parent < 1 || parent > 9 || sub < 1 || sub > 9) {
+        return -EINVAL;
+    }
+
+    const struct zmk_behavior_binding *binding = &sub_tile_bindings[parent - 1][sub - 1];
+    if (binding->behavior_dev == NULL) {
+        return -ENOENT;
+    }
+
+    zmk_keymap_layer_index_t layer_index = zmk_keymap_highest_layer_active();
+    zmk_keymap_layer_id_t layer_id = zmk_keymap_layer_index_to_id(layer_index);
+    struct zmk_behavior_binding_event event = {
+        .layer = layer_id,
+        .position = 0xE100 + (parent - 1) * 9 + (sub - 1),
+        .timestamp = k_uptime_get(),
+#if IS_ENABLED(CONFIG_ZMK_SPLIT)
+        .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+#endif
+    };
+
+    int ret = zmk_behavior_invoke_binding(binding, event, true);
+    if (ret < 0) {
+        return ret;
+    }
+
+    k_msleep(10);
+    event.timestamp = k_uptime_get();
+    return zmk_behavior_invoke_binding(binding, event, false);
+}
+
 static void handle_command_line(const char *line) {
     send_command_ack_line(line);
 
@@ -426,9 +550,15 @@ static void handle_command_line(const char *line) {
     }
 
     if (strstr(line, "cmd=deck") != NULL) {
-        int tile = command_tile_number(line);
-        int ret = invoke_deck_tile(tile);
-        send_deck_result_line(tile, ret);
+        int parent = 0, sub = 0;
+        parse_tile_spec(line, &parent, &sub);
+        if (sub > 0) {
+            int ret = invoke_sub_tile(parent, sub);
+            send_deck_result_line(parent, ret);
+        } else {
+            int ret = invoke_deck_tile(parent);
+            send_deck_result_line(parent, ret);
+        }
         send_status_now();
         return;
     }
@@ -551,6 +681,7 @@ static int esp32_status_init(void) {
 
     schedule_status_send();
     send_deck_label_lines();
+    send_sub_tile_label_lines();
     send_bt_profile_name_lines();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
     return 0;
