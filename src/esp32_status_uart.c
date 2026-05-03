@@ -61,7 +61,9 @@ static int current_wpm;
 static uint8_t peripheral_batteries[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
 static bool peripheral_battery_seen[CONFIG_ZMK_ESP32_STATUS_UART_MAX_PERIPHERALS];
 static char command_line[96];
+static char pending_command_line[96];
 static size_t command_line_len;
+static volatile bool pending_command_ready;
 static const char *const deck_tile_labels[] = {
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_1_NODE, CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL),
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_2_NODE, CONFIG_ZMK_ESP32_DECK_TILE_2_LABEL),
@@ -281,6 +283,38 @@ static int command_tile_number(const char *line) {
     return atoi(tile + strlen("tile="));
 }
 
+static void queue_received_command(void)
+{
+    if (command_line_len == 0) {
+        return;
+    }
+
+    command_line[command_line_len] = '\0';
+    strncpy(pending_command_line, command_line, sizeof(pending_command_line) - 1);
+    pending_command_line[sizeof(pending_command_line) - 1] = '\0';
+    pending_command_ready = true;
+    command_line_len = 0;
+    k_work_reschedule(&receive_command_work, K_NO_WAIT);
+}
+
+static void append_received_command_byte(uint8_t c)
+{
+    if (c == '\r') {
+        return;
+    }
+
+    if (c == '\n') {
+        queue_received_command();
+        return;
+    }
+
+    if (command_line_len < sizeof(command_line) - 1) {
+        command_line[command_line_len++] = (char)c;
+    } else {
+        command_line_len = 0;
+    }
+}
+
 static int invoke_deck_tile(int tile) {
     if (tile < 1 || tile > ARRAY_SIZE(deck_tile_bindings)) {
         return -EINVAL;
@@ -361,28 +395,50 @@ static void handle_command_line(const char *line) {
 }
 
 static void receive_command_work_handler(struct k_work *work) {
+#if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
+    if (pending_command_ready) {
+        char line[sizeof(pending_command_line)];
+        strncpy(line, pending_command_line, sizeof(line) - 1);
+        line[sizeof(line) - 1] = '\0';
+        pending_command_ready = false;
+        handle_command_line(line);
+    }
+#else
     unsigned char c;
     while (uart_poll_in(status_uart, &c) == 0) {
-        if (c == '\r') {
-            continue;
-        }
-        if (c == '\n') {
-            command_line[command_line_len] = '\0';
-            if (command_line_len > 0) {
-                handle_command_line(command_line);
-            }
-            command_line_len = 0;
-            continue;
-        }
-        if (command_line_len < sizeof(command_line) - 1) {
-            command_line[command_line_len++] = c;
-        } else {
-            command_line_len = 0;
+        append_received_command_byte(c);
+        if (pending_command_ready) {
+            char line[sizeof(pending_command_line)];
+            strncpy(line, pending_command_line, sizeof(line) - 1);
+            line[sizeof(line) - 1] = '\0';
+            pending_command_ready = false;
+            handle_command_line(line);
         }
     }
 
     k_work_reschedule(&receive_command_work, K_MSEC(30));
+#endif
 }
+
+#if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
+static void status_uart_callback(const struct device *dev, void *user_data)
+{
+    while (uart_irq_update(dev) && uart_irq_is_pending(dev)) {
+        if (!uart_irq_rx_ready(dev)) {
+            continue;
+        }
+
+        uint8_t buffer[16];
+        int read;
+        do {
+            read = uart_fifo_read(dev, buffer, sizeof(buffer));
+            for (int i = 0; i < read; ++i) {
+                append_received_command_byte(buffer[i]);
+            }
+        } while (read == sizeof(buffer));
+    }
+}
+#endif
 
 static int esp32_status_listener(const zmk_event_t *eh) {
     if (as_zmk_keycode_state_changed(eh) != NULL ||
@@ -437,10 +493,19 @@ static int esp32_status_init(void) {
         return -ENODEV;
     }
 
+#if IS_ENABLED(CONFIG_UART_INTERRUPT_DRIVEN)
+    int ret = uart_irq_callback_user_data_set(status_uart, status_uart_callback, NULL);
+    if (ret < 0) {
+        return ret;
+    }
+    uart_irq_rx_enable(status_uart);
+#else
+    k_work_reschedule(&receive_command_work, K_MSEC(30));
+#endif
+
     schedule_status_send();
     send_deck_label_lines();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
-    k_work_reschedule(&receive_command_work, K_MSEC(30));
     return 0;
 }
 
