@@ -367,8 +367,13 @@ static int esp32_status_listener(const zmk_event_t *eh) {
     }
 #endif
 
-    if (as_zmk_activity_state_changed(eh) != NULL) {
+    const struct zmk_activity_state_changed *activity_ev = as_zmk_activity_state_changed(eh);
+    if (activity_ev != NULL) {
         send_status_now();
+        if (activity_ev->state == ZMK_ACTIVITY_ACTIVE) {
+            k_work_reschedule(&periodic_status_work,
+                              K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
+        }
         return 0;
     }
 
