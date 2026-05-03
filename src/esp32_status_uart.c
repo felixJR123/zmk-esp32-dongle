@@ -16,6 +16,7 @@
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/events/activity_state_changed.h>
+#include <zmk/events/endpoint_changed.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/events/modifiers_state_changed.h>
@@ -151,13 +152,17 @@ static void send_status_line(void) {
     char layer_value[32];
     sanitize_value(layer_name, layer_value, sizeof(layer_value));
 
+    struct zmk_endpoint_instance selected_endpoint = zmk_endpoint_get_selected();
     int bt_slot = zmk_ble_active_profile_index() + 1;
-    bool bt_connected = zmk_ble_profile_is_connected(bt_slot - 1);
-    bool usb_connected = zmk_usb_is_hid_ready();
-    enum zmk_transport preferred_transport = zmk_endpoint_get_preferred_transport();
-    const char *conn = preferred_transport == ZMK_TRANSPORT_USB
+    bool usb_connected = selected_endpoint.transport == ZMK_TRANSPORT_USB && zmk_usb_is_hid_ready();
+    bool bt_connected = false;
+    if (selected_endpoint.transport == ZMK_TRANSPORT_BLE) {
+        bt_slot = selected_endpoint.ble.profile_index + 1;
+        bt_connected = zmk_ble_profile_is_connected(selected_endpoint.ble.profile_index);
+    }
+    const char *conn = selected_endpoint.transport == ZMK_TRANSPORT_USB
                            ? "usb"
-                           : preferred_transport == ZMK_TRANSPORT_BLE ? "bt" : "none";
+                           : selected_endpoint.transport == ZMK_TRANSPORT_BLE ? "bt" : "none";
     int count = peripheral_count();
     enum zmk_activity_state activity = zmk_activity_get_state();
     const char *display = activity == ZMK_ACTIVITY_ACTIVE ? "on" : "off";
@@ -210,7 +215,8 @@ static void send_deck_label_lines(void) {
 
 static void send_deck_result_line(int tile, int result) {
     char line[48];
-    snprintf(line, sizeof(line), "deck_result=%d status=%s\n", tile, result < 0 ? "error" : "ok");
+    snprintf(line, sizeof(line), "deck_result=%d status=%s code=%d\n", tile,
+             result == 0 ? "ok" : "error", result);
     uart_write_string(line);
 }
 
@@ -377,6 +383,11 @@ static int esp32_status_listener(const zmk_event_t *eh) {
         return 0;
     }
 
+    if (as_zmk_endpoint_changed(eh) != NULL) {
+        send_status_now();
+        return 0;
+    }
+
 #if IS_ENABLED(CONFIG_ZMK_WPM)
     const struct zmk_wpm_state_changed *wpm_event = as_zmk_wpm_state_changed(eh);
     if (wpm_event != NULL) {
@@ -424,3 +435,4 @@ ZMK_SUBSCRIPTION(esp32_status_uart, zmk_ble_active_profile_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_usb_conn_state_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_peripheral_battery_state_changed);
 ZMK_SUBSCRIPTION(esp32_status_uart, zmk_activity_state_changed);
+ZMK_SUBSCRIPTION(esp32_status_uart, zmk_endpoint_changed);
