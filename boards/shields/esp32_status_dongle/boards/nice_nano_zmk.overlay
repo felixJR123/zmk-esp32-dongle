@@ -29,13 +29,3 @@
     pinctrl-1 = <&uart0_sleep>;
     pinctrl-names = "default", "sleep";
 };
-
-/ {
-    uart_rx_wakeup: uart_rx_wakeup {
-        compatible = "zephyr,gpio-keys";
-        wakeup-source;
-        uart_rx_wake_key: uart_rx_wake_key {
-            gpios = <&gpio0 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        };
-    };
-};
