@@ -247,7 +247,8 @@ static void send_bt_profile_name_lines(void) {
     if (!device_is_ready(status_uart)) {
         return;
     }
-    for (int i = 0; i < ARRAY_SIZE(bt_profile_names); i++) {
+    int count = MIN((int)ARRAY_SIZE(bt_profile_names), ZMK_BLE_PROFILE_COUNT);
+    for (int i = 0; i < count; i++) {
         send_bt_profile_name_line(i + 1, bt_profile_names[i]);
     }
 }
