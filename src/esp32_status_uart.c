@@ -175,16 +175,18 @@ static void send_status_line(void) {
     int capslock = 0;
 #endif
 
-    char line[192];
+    char line[200];
     snprintf(line, sizeof(line),
              "layer=%s usb=%d bt=%d bt_slot=%d conn=%s ctrl=%d alt=%d win=%d shift=%d "
-             "capslock=%d wpm=%d display=%s bt_profiles=%d peripherals=%d batt=",
+             "capslock=%d wpm=%d display=%s bt_open=%d bt_profiles=%d peripherals=%d batt=",
              layer_value, usb_connected ? 1 : 0, bt_connected ? 1 : 0, bt_slot, conn,
              (modifiers & (MOD_LCTL | MOD_RCTL)) ? 1 : 0,
              (modifiers & (MOD_LALT | MOD_RALT)) ? 1 : 0,
              (modifiers & (MOD_LGUI | MOD_RGUI)) ? 1 : 0,
              (modifiers & (MOD_LSFT | MOD_RSFT)) ? 1 : 0,
-             capslock, current_wpm, display, ZMK_BLE_PROFILE_COUNT, count);
+             capslock, current_wpm, display,
+             zmk_ble_active_profile_is_open() ? 1 : 0,
+             ZMK_BLE_PROFILE_COUNT, count);
 
     append_battery_list(line, sizeof(line), count);
     strncat(line, "\n", sizeof(line) - strlen(line) - 1);
