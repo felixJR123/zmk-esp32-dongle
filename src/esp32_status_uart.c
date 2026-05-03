@@ -156,7 +156,7 @@ static void send_status_line(void) {
 
     struct zmk_endpoint_instance selected_endpoint = zmk_endpoint_get_selected();
     int bt_slot = zmk_ble_active_profile_index() + 1;
-    bool usb_connected = selected_endpoint.transport == ZMK_TRANSPORT_USB && zmk_usb_is_hid_ready();
+    bool usb_ready = zmk_usb_is_hid_ready();
     bool bt_connected = false;
     if (selected_endpoint.transport == ZMK_TRANSPORT_BLE) {
         bt_slot = selected_endpoint.ble.profile_index + 1;
@@ -175,17 +175,18 @@ static void send_status_line(void) {
     int capslock = 0;
 #endif
 
-    char line[200];
+    char line[220];
     snprintf(line, sizeof(line),
              "layer=%s usb=%d bt=%d bt_slot=%d conn=%s ctrl=%d alt=%d win=%d shift=%d "
-             "capslock=%d wpm=%d display=%s bt_open=%d bt_profiles=%d peripherals=%d batt=",
-             layer_value, usb_connected ? 1 : 0, bt_connected ? 1 : 0, bt_slot, conn,
+             "capslock=%d wpm=%d display=%s bt_open=%d usb_avail=%d bt_profiles=%d peripherals=%d batt=",
+             layer_value, usb_ready ? 1 : 0, bt_connected ? 1 : 0, bt_slot, conn,
              (modifiers & (MOD_LCTL | MOD_RCTL)) ? 1 : 0,
              (modifiers & (MOD_LALT | MOD_RALT)) ? 1 : 0,
              (modifiers & (MOD_LGUI | MOD_RGUI)) ? 1 : 0,
              (modifiers & (MOD_LSFT | MOD_RSFT)) ? 1 : 0,
              capslock, current_wpm, display,
              zmk_ble_active_profile_is_open() ? 1 : 0,
+             usb_ready ? 1 : 0,
              ZMK_BLE_PROFILE_COUNT, count);
 
     append_battery_list(line, sizeof(line), count);
