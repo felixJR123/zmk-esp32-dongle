@@ -31,7 +31,7 @@
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 #include <zmk/events/wpm_state_changed.h>
 #endif
-#include <zmk/bootloader.h>
+#include <hal/nrf_power.h>
 #include <zmk/usb.h>
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
@@ -588,7 +588,8 @@ static void handle_command_line(const char *line) {
     }
 
     if (strstr(line, "cmd=boot") != NULL) {
-        zmk_bootloader_reset();
+        nrf_power_gpregret_set(NRF_POWER, 0x57);
+        sys_reboot(SYS_REBOOT_COLD);
         return;
     }
 }
