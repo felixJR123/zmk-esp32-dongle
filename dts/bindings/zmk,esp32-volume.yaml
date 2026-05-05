@@ -1,0 +1,10 @@
+description: ESP32 volume control bindings — vol up, vol down, mute
+
+compatible: "zmk,esp32-volume"
+
+child-binding:
+  description: A single volume action (vol_up / vol_dn / mute)
+  properties:
+    bindings:
+      type: phandle-array
+      required: true

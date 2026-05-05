@@ -56,6 +56,15 @@
     COND_CODE_1(DT_NODE_EXISTS(node), (DT_PROP_OR(node, label, fallback)), (fallback))
 #define ESP32_DECK_EMPTY_BINDING                                                                   \
     { .behavior_dev = NULL, .param1 = 0, .param2 = 0 }
+
+#define ESP32_VOL_NODE    DT_PATH(esp32_volume)
+#define ESP32_VOL_UP_NODE DT_PATH(esp32_volume, vol_up)
+#define ESP32_VOL_DN_NODE DT_PATH(esp32_volume, vol_dn)
+#define ESP32_VOL_MUTE_NODE DT_PATH(esp32_volume, mute)
+#define ESP32_VOL_BINDING(node)                                                                    \
+    COND_CODE_1(DT_NODE_EXISTS(node),                                                              \
+                (ZMK_KEYMAP_EXTRACT_BINDING(0, node)),                                             \
+                (ESP32_DECK_EMPTY_BINDING))
 #define ESP32_DECK_TILE_BINDING(node)                                                              \
     COND_CODE_1(DT_NODE_EXISTS(node),                                                              \
                 (COND_CODE_1(DT_NODE_HAS_PROP(node, bindings),                                     \
@@ -143,6 +152,12 @@ static const struct zmk_behavior_binding sub_tile_bindings[9][9] = {
     ESP32_SUBTILE_BINDINGS_ROW(7),
     ESP32_SUBTILE_BINDINGS_ROW(8),
     ESP32_SUBTILE_BINDINGS_ROW(9),
+};
+
+static const struct zmk_behavior_binding vol_bindings[3] = {
+    ESP32_VOL_BINDING(ESP32_VOL_UP_NODE),
+    ESP32_VOL_BINDING(ESP32_VOL_DN_NODE),
+    ESP32_VOL_BINDING(ESP32_VOL_MUTE_NODE),
 };
 
 static const char *const sub_tile_labels[9][9] = {
@@ -369,6 +384,8 @@ static void send_command_ack_line(const char *command)
         name = "wake";
     } else if (strstr(command, "cmd=boot") != NULL) {
         name = "boot";
+    } else if (strstr(command, "cmd=vol") != NULL) {
+        name = "vol";
     }
 
     char line[40];
@@ -527,6 +544,33 @@ static int invoke_sub_tile(int parent, int sub)
     return zmk_behavior_invoke_binding(binding, event, false);
 }
 
+static int invoke_volume_binding(int index) {
+    if (index < 0 || index >= 3) {
+        return -EINVAL;
+    }
+    const struct zmk_behavior_binding *binding = &vol_bindings[index];
+    if (binding->behavior_dev == NULL) {
+        return -ENOENT;
+    }
+    zmk_keymap_layer_index_t layer_index = zmk_keymap_highest_layer_active();
+    zmk_keymap_layer_id_t layer_id = zmk_keymap_layer_index_to_id(layer_index);
+    struct zmk_behavior_binding_event event = {
+        .layer = layer_id,
+        .position = 0xE200,
+        .timestamp = k_uptime_get(),
+#if IS_ENABLED(CONFIG_ZMK_SPLIT)
+        .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
+#endif
+    };
+    int ret = zmk_behavior_invoke_binding(binding, event, true);
+    if (ret < 0) {
+        return ret;
+    }
+    k_msleep(10);
+    event.timestamp = k_uptime_get();
+    return zmk_behavior_invoke_binding(binding, event, false);
+}
+
 static void handle_command_line(const char *line) {
     send_command_ack_line(line);
 
@@ -591,6 +635,17 @@ static void handle_command_line(const char *line) {
     if (strstr(line, "cmd=boot") != NULL) {
         nrf_power_gpregret_set(NRF_POWER, 0, 0x57);
         sys_reboot(SYS_REBOOT_COLD);
+        return;
+    }
+
+    if (strstr(line, "cmd=vol") != NULL) {
+        if (strstr(line, "up") != NULL) {
+            invoke_volume_binding(0);
+        } else if (strstr(line, "down") != NULL) {
+            invoke_volume_binding(1);
+        } else if (strstr(line, "mute") != NULL) {
+            invoke_volume_binding(2);
+        }
         return;
     }
 }
