@@ -31,6 +31,7 @@
 #if IS_ENABLED(CONFIG_ZMK_WPM)
 #include <zmk/events/wpm_state_changed.h>
 #endif
+#include <zmk/bootloader.h>
 #include <zmk/usb.h>
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
@@ -335,10 +336,15 @@ static void send_bt_profile_name_lines(void) {
     }
 }
 
-static void send_deck_result_line(int tile, int result) {
-    char line[48];
-    snprintf(line, sizeof(line), "deck_result=%d status=%s code=%d\n", tile,
-             result == 0 ? "ok" : "error", result);
+static void send_deck_result_line(int tile, int sub, int result) {
+    char line[64];
+    if (sub > 0) {
+        snprintf(line, sizeof(line), "deck_result=%d_%d status=%s code=%d\n",
+                 tile, sub, result == 0 ? "ok" : "error", result);
+    } else {
+        snprintf(line, sizeof(line), "deck_result=%d status=%s code=%d\n",
+                 tile, result == 0 ? "ok" : "error", result);
+    }
     uart_write_string(line);
 }
 
@@ -352,12 +358,16 @@ static void send_command_ack_line(const char *command)
         name = "bt";
     } else if (strstr(command, "cmd=deck") != NULL) {
         name = "deck";
+    } else if (strstr(command, "cmd=sync") != NULL) {
+        name = "sync";
     } else if (strstr(command, "cmd=clear_profile") != NULL) {
         name = "clear_profile";
     } else if (strstr(command, "cmd=clear_all_profiles") != NULL) {
         name = "clear_all_profiles";
     } else if (strstr(command, "cmd=wake") != NULL) {
         name = "wake";
+    } else if (strstr(command, "cmd=boot") != NULL) {
+        name = "boot";
     }
 
     char line[40];
@@ -554,10 +564,10 @@ static void handle_command_line(const char *line) {
         parse_tile_spec(line, &parent, &sub);
         if (sub > 0) {
             int ret = invoke_sub_tile(parent, sub);
-            send_deck_result_line(parent, ret);
+            send_deck_result_line(parent, sub, ret);
         } else {
             int ret = invoke_deck_tile(parent);
-            send_deck_result_line(parent, ret);
+            send_deck_result_line(parent, 0, ret);
         }
         send_status_now();
         return;
@@ -566,6 +576,19 @@ static void handle_command_line(const char *line) {
     if (strstr(line, "cmd=wake") != NULL) {
         set_state(ZMK_ACTIVITY_ACTIVE);
         send_status_now();
+        return;
+    }
+
+    if (strstr(line, "cmd=sync") != NULL) {
+        send_status_now();
+        send_deck_label_lines();
+        send_sub_tile_label_lines();
+        send_bt_profile_name_lines();
+        return;
+    }
+
+    if (strstr(line, "cmd=boot") != NULL) {
+        zmk_bootloader_reset();
         return;
     }
 }
