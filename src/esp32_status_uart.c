@@ -8,6 +8,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
+#include <hal/nrf_power.h>
 
 #include <zmk/activity.h>
 #include <zmk/ble.h>
@@ -588,7 +589,8 @@ static void handle_command_line(const char *line) {
     }
 
     if (strstr(line, "cmd=boot") != NULL) {
-        sys_reboot(SYS_REBOOT_WARM);
+        nrf_power_gpregret_set(NRF_POWER, 0, 0x57);
+        sys_reboot(SYS_REBOOT_COLD);
         return;
     }
 }
