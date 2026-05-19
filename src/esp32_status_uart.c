@@ -405,9 +405,6 @@ static void send_status_work_handler(struct k_work *work) { send_status_line(); 
 
 static void periodic_status_work_handler(struct k_work *work) {
     send_status_line();
-    send_deck_label_lines();
-    send_sub_tile_label_lines();
-    send_bt_profile_name_lines();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
 }
 
