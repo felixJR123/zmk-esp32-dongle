@@ -9,6 +9,7 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 #include <hal/nrf_power.h>
+#include <hal/nrf_usbd.h>
 
 #include <zmk/activity.h>
 #include <zmk/ble.h>
@@ -236,6 +237,25 @@ static void sanitize_value(const char *input, char *output, size_t output_len) {
     output[out] = '\0';
 }
 
+static bool usb_vbus_detected(void) {
+    return nrf_power_usbregstatus_vbusdet_get(NRF_POWER);
+}
+
+static bool usb_host_frames_active(void) {
+    if (nrf_usbd_event_check(NRF_USBD, NRF_USBD_EVENT_SOF)) {
+        nrf_usbd_event_clear(NRF_USBD, NRF_USBD_EVENT_SOF);
+    }
+
+    k_sleep(K_MSEC(4));
+
+    bool active = nrf_usbd_event_check(NRF_USBD, NRF_USBD_EVENT_SOF);
+    if (active) {
+        nrf_usbd_event_clear(NRF_USBD, NRF_USBD_EVENT_SOF);
+    }
+
+    return active;
+}
+
 static void send_status_line(void) {
     if (!device_is_ready(status_uart)) {
         return;
@@ -252,7 +272,10 @@ static void send_status_line(void) {
 
     struct zmk_endpoint_instance selected_endpoint = zmk_endpoint_get_selected();
     int bt_slot = zmk_ble_active_profile_index() + 1;
-    bool usb_ready = zmk_usb_is_hid_ready();
+    bool usb_vbus = usb_vbus_detected();
+    bool usb_hid_ready = zmk_usb_is_hid_ready();
+    bool usb_host_active = usb_host_frames_active();
+    bool usb_ready = usb_vbus && usb_hid_ready && usb_host_active;
     bool bt_connected = false;
     if (selected_endpoint.transport == ZMK_TRANSPORT_BLE) {
         bt_slot = selected_endpoint.ble.profile_index + 1;
@@ -271,10 +294,11 @@ static void send_status_line(void) {
     int capslock = 0;
 #endif
 
-    char line[220];
+    char line[260];
     snprintf(line, sizeof(line),
              "layer=%s usb=%d bt=%d bt_slot=%d conn=%s ctrl=%d alt=%d win=%d shift=%d "
-             "capslock=%d wpm=%d display=%s bt_open=%d usb_avail=%d bt_profiles=%d peripherals=%d batt=",
+             "capslock=%d wpm=%d display=%s bt_open=%d usb_avail=%d usb_vbus=%d usb_hid=%d "
+             "usb_sof=%d bt_profiles=%d peripherals=%d batt=",
              layer_value, usb_ready ? 1 : 0, bt_connected ? 1 : 0, bt_slot, conn,
              (modifiers & (MOD_LCTL | MOD_RCTL)) ? 1 : 0,
              (modifiers & (MOD_LALT | MOD_RALT)) ? 1 : 0,
@@ -283,6 +307,9 @@ static void send_status_line(void) {
              capslock, current_wpm, display,
              zmk_ble_active_profile_is_open() ? 1 : 0,
              usb_ready ? 1 : 0,
+             usb_vbus ? 1 : 0,
+             usb_hid_ready ? 1 : 0,
+             usb_host_active ? 1 : 0,
              ZMK_BLE_PROFILE_COUNT, count);
 
     append_battery_list(line, sizeof(line), count);
