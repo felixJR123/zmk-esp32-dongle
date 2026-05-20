@@ -828,7 +828,7 @@ static int esp32_status_listener(const zmk_event_t *eh) {
     if (profile_ev != NULL) {
         char name[CONFIG_BT_DEVICE_NAME_MAX + 1];
         snprintf(name, sizeof(name), "%s-BT%d",
-                 CONFIG_ZMK_ESP32_DEVICE_BASE_NAME, profile_ev->index + 1);
+                 CONFIG_BT_DEVICE_NAME, profile_ev->index + 1);
         bt_set_name(name);
     }
 #endif
@@ -871,7 +871,7 @@ static int esp32_status_init(void) {
     {
         char name[CONFIG_BT_DEVICE_NAME_MAX + 1];
         snprintf(name, sizeof(name), "%s-BT%d",
-                 CONFIG_ZMK_ESP32_DEVICE_BASE_NAME,
+                 CONFIG_BT_DEVICE_NAME,
                  zmk_ble_active_profile_index() + 1);
         bt_set_name(name);
     }
