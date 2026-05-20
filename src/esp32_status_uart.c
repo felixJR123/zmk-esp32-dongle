@@ -105,6 +105,8 @@ static char command_line[96];
 static char pending_command_line[96];
 static size_t command_line_len;
 static volatile bool pending_command_ready;
+static int esp32_requested_transport = -1;
+static int esp32_requested_bt_profile = -1;
 static const char *const deck_tile_labels[] = {
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_1_NODE, CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL),
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_2_NODE, CONFIG_ZMK_ESP32_DECK_TILE_2_LABEL),
@@ -256,6 +258,18 @@ static bool usb_host_frames_active(void) {
     return active;
 }
 
+static const char *requested_conn_name(struct zmk_endpoint_instance selected_endpoint) {
+    if (esp32_requested_transport == ZMK_TRANSPORT_USB) {
+        return "usb";
+    }
+    if (esp32_requested_transport == ZMK_TRANSPORT_BLE) {
+        return "bt";
+    }
+    return selected_endpoint.transport == ZMK_TRANSPORT_USB
+               ? "usb"
+               : selected_endpoint.transport == ZMK_TRANSPORT_BLE ? "bt" : "none";
+}
+
 static void send_status_line(void) {
     if (!device_is_ready(status_uart)) {
         return;
@@ -277,13 +291,15 @@ static void send_status_line(void) {
     bool usb_host_active = usb_host_frames_active();
     bool usb_ready = usb_vbus && usb_hid_ready && usb_host_active;
     bool bt_connected = false;
-    if (selected_endpoint.transport == ZMK_TRANSPORT_BLE) {
+    if (esp32_requested_transport == ZMK_TRANSPORT_BLE && esp32_requested_bt_profile >= 0 &&
+        esp32_requested_bt_profile < ZMK_BLE_PROFILE_COUNT) {
+        bt_slot = esp32_requested_bt_profile + 1;
+        bt_connected = zmk_ble_profile_is_connected(esp32_requested_bt_profile);
+    } else if (selected_endpoint.transport == ZMK_TRANSPORT_BLE) {
         bt_slot = selected_endpoint.ble.profile_index + 1;
         bt_connected = zmk_ble_profile_is_connected(selected_endpoint.ble.profile_index);
     }
-    const char *conn = selected_endpoint.transport == ZMK_TRANSPORT_USB
-                           ? "usb"
-                           : selected_endpoint.transport == ZMK_TRANSPORT_BLE ? "bt" : "none";
+    const char *conn = requested_conn_name(selected_endpoint);
     int count = peripheral_count();
     enum zmk_activity_state activity = zmk_activity_get_state();
     const char *display = activity == ZMK_ACTIVITY_ACTIVE ? "on" : "off";
@@ -681,6 +697,8 @@ static void handle_command_line(const char *line) {
     send_command_ack_line(line);
 
     if (strstr(line, "cmd=usb") != NULL) {
+        esp32_requested_transport = ZMK_TRANSPORT_USB;
+        esp32_requested_bt_profile = -1;
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_USB);
         send_status_now();
         return;
@@ -690,7 +708,9 @@ static void handle_command_line(const char *line) {
         int profile = command_profile_index(line);
         if (profile >= 0 && profile < ZMK_BLE_PROFILE_COUNT) {
             zmk_ble_prof_select(profile);
+            esp32_requested_bt_profile = profile;
         }
+        esp32_requested_transport = ZMK_TRANSPORT_BLE;
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_BLE);
         send_status_now();
         k_msleep(80);
