@@ -92,4 +92,19 @@ config ZMK_ESP32_DECK_TILE_9_LABEL
     string "ESP32 deck tile 9 label"
     default "Tile 9"
 
+config ZMK_ESP32_PROFILE_NAMING
+    bool "Per-profile BT device name suffix"
+    default n
+    select BT_DEVICE_NAME_DYNAMIC
+    help
+      When enabled the BT device name is changed to "<base>-BT<N>" whenever
+      the active BLE profile changes. Hosts must re-pair to see the new name.
+
+config ZMK_ESP32_DEVICE_BASE_NAME
+    string "Base device name for profile naming"
+    depends on ZMK_ESP32_PROFILE_NAMING
+    default "Keyboard"
+    help
+      The part before the suffix: "MyBoard" → "MyBoard-BT1", "MyBoard-BT2", …
+
 endif
