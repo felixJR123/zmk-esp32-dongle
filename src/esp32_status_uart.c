@@ -663,6 +663,9 @@ static void handle_command_line(const char *line) {
     if (strstr(line, "cmd=bt") != NULL) {
         int profile = command_profile_index(line);
         if (profile >= 0 && profile < ZMK_BLE_PROFILE_COUNT) {
+            char name[CONFIG_BT_DEVICE_NAME_MAX + 1];
+            snprintf(name, sizeof(name), "%s-BT%d", CONFIG_BT_DEVICE_NAME, profile + 1);
+            bt_set_name(name);
             zmk_ble_prof_select(profile);
         }
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_BLE);
@@ -820,14 +823,6 @@ static int esp32_status_listener(const zmk_event_t *eh) {
         return 0;
     }
 
-    const struct zmk_ble_active_profile_changed *profile_ev =
-        as_zmk_ble_active_profile_changed(eh);
-    if (profile_ev != NULL) {
-        char name[CONFIG_BT_DEVICE_NAME_MAX + 1];
-        snprintf(name, sizeof(name), "%s-BT%d",
-                 CONFIG_BT_DEVICE_NAME, profile_ev->index + 1);
-        bt_set_name(name);
-    }
 
 #if IS_ENABLED(CONFIG_ZMK_WPM)
     const struct zmk_wpm_state_changed *wpm_event = as_zmk_wpm_state_changed(eh);
