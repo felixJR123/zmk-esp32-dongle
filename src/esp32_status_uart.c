@@ -34,9 +34,7 @@
 #include <zmk/events/wpm_state_changed.h>
 #endif
 #include <zmk/usb.h>
-#if IS_ENABLED(CONFIG_ZMK_ESP32_PROFILE_NAMING)
 #include <zephyr/bluetooth/bluetooth.h>
-#endif
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
 #define HID_LED_CAPS_LOCK BIT(1)
@@ -822,7 +820,6 @@ static int esp32_status_listener(const zmk_event_t *eh) {
         return 0;
     }
 
-#if IS_ENABLED(CONFIG_ZMK_ESP32_PROFILE_NAMING)
     const struct zmk_ble_active_profile_changed *profile_ev =
         as_zmk_ble_active_profile_changed(eh);
     if (profile_ev != NULL) {
@@ -831,7 +828,6 @@ static int esp32_status_listener(const zmk_event_t *eh) {
                  CONFIG_BT_DEVICE_NAME, profile_ev->index + 1);
         bt_set_name(name);
     }
-#endif
 
 #if IS_ENABLED(CONFIG_ZMK_WPM)
     const struct zmk_wpm_state_changed *wpm_event = as_zmk_wpm_state_changed(eh);
@@ -867,7 +863,6 @@ static int esp32_status_init(void) {
     k_work_reschedule(&receive_command_work, K_MSEC(30));
 #endif
 
-#if IS_ENABLED(CONFIG_ZMK_ESP32_PROFILE_NAMING)
     {
         char name[CONFIG_BT_DEVICE_NAME_MAX + 1];
         snprintf(name, sizeof(name), "%s-BT%d",
@@ -875,7 +870,6 @@ static int esp32_status_init(void) {
                  zmk_ble_active_profile_index() + 1);
         bt_set_name(name);
     }
-#endif
     schedule_status_send();
     send_deck_labels_with_done();
     send_sub_tile_labels_with_done();
