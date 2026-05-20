@@ -178,13 +178,19 @@ static void send_status_work_handler(struct k_work *work);
 static void periodic_status_work_handler(struct k_work *work);
 static void receive_command_work_handler(struct k_work *work);
 static void bt_names_retry_work_handler(struct k_work *work);
+static void deck_labels_retry_work_handler(struct k_work *work);
+static void sub_tile_labels_retry_work_handler(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(send_status_work, send_status_work_handler);
 K_WORK_DELAYABLE_DEFINE(periodic_status_work, periodic_status_work_handler);
 K_WORK_DELAYABLE_DEFINE(receive_command_work, receive_command_work_handler);
 K_WORK_DELAYABLE_DEFINE(bt_names_retry_work, bt_names_retry_work_handler);
+K_WORK_DELAYABLE_DEFINE(deck_labels_retry_work, deck_labels_retry_work_handler);
+K_WORK_DELAYABLE_DEFINE(sub_tile_labels_retry_work, sub_tile_labels_retry_work_handler);
 
 static bool bt_names_ack_pending = false;
+static bool deck_labels_ack_pending = false;
+static bool sub_tile_labels_ack_pending = false;
 
 static void uart_write_string(const char *text) {
     for (const char *p = text; *p != '\0'; p++) {
@@ -335,6 +341,38 @@ static void send_sub_tile_label_lines(void)
     }
 }
 
+static void send_deck_labels_with_done(void) {
+    if (!device_is_ready(status_uart)) {
+        return;
+    }
+    send_deck_label_lines();
+    uart_write_string("deck_labels_done\n");
+    deck_labels_ack_pending = true;
+    k_work_reschedule(&deck_labels_retry_work, K_MSEC(1000));
+}
+
+static void deck_labels_retry_work_handler(struct k_work *work) {
+    if (deck_labels_ack_pending) {
+        send_deck_labels_with_done();
+    }
+}
+
+static void send_sub_tile_labels_with_done(void) {
+    if (!device_is_ready(status_uart)) {
+        return;
+    }
+    send_sub_tile_label_lines();
+    uart_write_string("sub_tile_labels_done\n");
+    sub_tile_labels_ack_pending = true;
+    k_work_reschedule(&sub_tile_labels_retry_work, K_MSEC(1000));
+}
+
+static void sub_tile_labels_retry_work_handler(struct k_work *work) {
+    if (sub_tile_labels_ack_pending) {
+        send_sub_tile_labels_with_done();
+    }
+}
+
 static void send_bt_profile_name_line(int profile, const char *name) {
     if (name == NULL || name[0] == '\0') {
         return;
@@ -408,6 +446,10 @@ static void send_command_ack_line(const char *command)
         name = "vol";
     } else if (strstr(command, "cmd=req_names") != NULL) {
         name = "req_names";
+    } else if (strstr(command, "cmd=req_deck_labels") != NULL) {
+        name = "req_deck_labels";
+    } else if (strstr(command, "cmd=req_sub_labels") != NULL) {
+        name = "req_sub_labels";
     }
 
     char line[40];
@@ -597,6 +639,18 @@ static void handle_command_line(const char *line) {
         return;
     }
 
+    if (strstr(line, "ack=deck_labels") != NULL) {
+        deck_labels_ack_pending = false;
+        k_work_cancel_delayable(&deck_labels_retry_work);
+        return;
+    }
+
+    if (strstr(line, "ack=sub_tile_labels") != NULL) {
+        sub_tile_labels_ack_pending = false;
+        k_work_cancel_delayable(&sub_tile_labels_retry_work);
+        return;
+    }
+
     send_command_ack_line(line);
 
     if (strstr(line, "cmd=usb") != NULL) {
@@ -651,14 +705,24 @@ static void handle_command_line(const char *line) {
 
     if (strstr(line, "cmd=sync") != NULL) {
         send_status_now();
-        send_deck_label_lines();
-        send_sub_tile_label_lines();
+        send_deck_labels_with_done();
+        send_sub_tile_labels_with_done();
         send_bt_names_with_done();
         return;
     }
 
     if (strstr(line, "cmd=req_names") != NULL) {
         send_bt_names_with_done();
+        return;
+    }
+
+    if (strstr(line, "cmd=req_deck_labels") != NULL) {
+        send_deck_labels_with_done();
+        return;
+    }
+
+    if (strstr(line, "cmd=req_sub_labels") != NULL) {
+        send_sub_tile_labels_with_done();
         return;
     }
 
@@ -790,8 +854,8 @@ static int esp32_status_init(void) {
 #endif
 
     schedule_status_send();
-    send_deck_label_lines();
-    send_sub_tile_label_lines();
+    send_deck_labels_with_done();
+    send_sub_tile_labels_with_done();
     send_bt_names_with_done();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
     return 0;
