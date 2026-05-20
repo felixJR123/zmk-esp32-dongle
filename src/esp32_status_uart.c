@@ -107,6 +107,7 @@ static size_t command_line_len;
 static volatile bool pending_command_ready;
 static int esp32_requested_transport = -1;
 static int esp32_requested_bt_profile = -1;
+static bool esp32_text_input_mode = false;
 static const char *const deck_tile_labels[] = {
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_1_NODE, CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL),
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_2_NODE, CONFIG_ZMK_ESP32_DECK_TILE_2_LABEL),
@@ -487,6 +488,8 @@ static void send_command_ack_line(const char *command)
         name = "boot";
     } else if (strstr(command, "cmd=vol") != NULL) {
         name = "vol";
+    } else if (strstr(command, "cmd=input") != NULL) {
+        name = "input";
     } else if (strstr(command, "cmd=req_names") != NULL) {
         name = "req_names";
     } else if (strstr(command, "cmd=req_deck_labels") != NULL) {
@@ -498,6 +501,62 @@ static void send_command_ack_line(const char *command)
     char line[40];
     snprintf(line, sizeof(line), "cmd_ack=%s\n", name);
     uart_write_string(line);
+}
+
+static char ascii_from_keycode(uint32_t keycode, bool shifted) {
+    if (keycode >= 0x04 && keycode <= 0x1D) {
+        char c = (char)('a' + (keycode - 0x04));
+        return shifted ? (char)(c - 32) : c;
+    }
+    if (keycode >= 0x1E && keycode <= 0x27) {
+        static const char normal[] = "1234567890";
+        static const char shifted_chars[] = "!@#$%^&*()";
+        int idx = keycode == 0x27 ? 9 : (int)(keycode - 0x1E);
+        return shifted ? shifted_chars[idx] : normal[idx];
+    }
+
+    switch (keycode) {
+    case 0x2C: return ' ';
+    case 0x2D: return shifted ? '_' : '-';
+    case 0x2E: return shifted ? '+' : '=';
+    case 0x2F: return shifted ? '{' : '[';
+    case 0x30: return shifted ? '}' : ']';
+    case 0x31: return shifted ? '|' : '\\';
+    case 0x33: return shifted ? ':' : ';';
+    case 0x34: return shifted ? '"' : '\'';
+    case 0x35: return shifted ? '~' : '`';
+    case 0x36: return shifted ? '<' : ',';
+    case 0x37: return shifted ? '>' : '.';
+    case 0x38: return shifted ? '?' : '/';
+    default: return '\0';
+    }
+}
+
+static bool send_text_input_key(const struct zmk_keycode_state_changed *ev) {
+    if (!esp32_text_input_mode || ev == NULL || !ev->state || ev->usage_page != 0x07) {
+        return false;
+    }
+
+    if (ev->keycode == 0x2A) {
+        uart_write_string("input=bsp\n");
+        return true;
+    }
+    if (ev->keycode == 0x28) {
+        uart_write_string("input=enter\n");
+        return true;
+    }
+
+    zmk_mod_flags_t mods = zmk_hid_get_keyboard_report()->body.modifiers | ev->implicit_modifiers;
+    bool shifted = (mods & (MOD_LSFT | MOD_RSFT)) != 0;
+    char c = ascii_from_keycode(ev->keycode, shifted);
+    if (c == '\0') {
+        return true;
+    }
+
+    char line[16];
+    snprintf(line, sizeof(line), "input=%02X\n", (unsigned char)c);
+    uart_write_string(line);
+    return true;
 }
 
 static void schedule_status_send(void) {
@@ -696,6 +755,15 @@ static void handle_command_line(const char *line) {
 
     send_command_ack_line(line);
 
+    if (strstr(line, "cmd=input") != NULL) {
+        if (strstr(line, "off") != NULL) {
+            esp32_text_input_mode = false;
+        } else {
+            esp32_text_input_mode = true;
+        }
+        return;
+    }
+
     if (strstr(line, "cmd=usb") != NULL) {
         esp32_requested_transport = ZMK_TRANSPORT_USB;
         esp32_requested_bt_profile = -1;
@@ -838,8 +906,16 @@ static void status_uart_callback(const struct device *dev, void *user_data)
 #endif
 
 static int esp32_status_listener(const zmk_event_t *eh) {
-    if (as_zmk_keycode_state_changed(eh) != NULL ||
-        as_zmk_modifiers_state_changed(eh) != NULL) {
+    const struct zmk_keycode_state_changed *keycode_ev = as_zmk_keycode_state_changed(eh);
+    if (keycode_ev != NULL) {
+        if (send_text_input_key(keycode_ev)) {
+            return ZMK_EV_EVENT_HANDLED;
+        }
+        schedule_status_send();
+        return 0;
+    }
+
+    if (as_zmk_modifiers_state_changed(eh) != NULL) {
         schedule_status_send();
         return 0;
     }
