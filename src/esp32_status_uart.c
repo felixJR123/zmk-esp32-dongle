@@ -177,10 +177,14 @@ extern int set_state(enum zmk_activity_state state);
 static void send_status_work_handler(struct k_work *work);
 static void periodic_status_work_handler(struct k_work *work);
 static void receive_command_work_handler(struct k_work *work);
+static void bt_names_retry_work_handler(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(send_status_work, send_status_work_handler);
 K_WORK_DELAYABLE_DEFINE(periodic_status_work, periodic_status_work_handler);
 K_WORK_DELAYABLE_DEFINE(receive_command_work, receive_command_work_handler);
+K_WORK_DELAYABLE_DEFINE(bt_names_retry_work, bt_names_retry_work_handler);
+
+static bool bt_names_ack_pending = false;
 
 static void uart_write_string(const char *text) {
     for (const char *p = text; *p != '\0'; p++) {
@@ -352,6 +356,22 @@ static void send_bt_profile_name_lines(void) {
     }
 }
 
+static void send_bt_names_with_done(void) {
+    if (!device_is_ready(status_uart)) {
+        return;
+    }
+    send_bt_profile_name_lines();
+    uart_write_string("bt_names_done\n");
+    bt_names_ack_pending = true;
+    k_work_reschedule(&bt_names_retry_work, K_MSEC(1000));
+}
+
+static void bt_names_retry_work_handler(struct k_work *work) {
+    if (bt_names_ack_pending) {
+        send_bt_names_with_done();
+    }
+}
+
 static void send_deck_result_line(int tile, int sub, int result) {
     char line[64];
     if (sub > 0) {
@@ -386,6 +406,8 @@ static void send_command_ack_line(const char *command)
         name = "boot";
     } else if (strstr(command, "cmd=vol") != NULL) {
         name = "vol";
+    } else if (strstr(command, "cmd=req_names") != NULL) {
+        name = "req_names";
     }
 
     char line[40];
@@ -569,6 +591,12 @@ static int invoke_volume_binding(int index) {
 }
 
 static void handle_command_line(const char *line) {
+    if (strstr(line, "ack=bt_names") != NULL) {
+        bt_names_ack_pending = false;
+        k_work_cancel_delayable(&bt_names_retry_work);
+        return;
+    }
+
     send_command_ack_line(line);
 
     if (strstr(line, "cmd=usb") != NULL) {
@@ -625,7 +653,12 @@ static void handle_command_line(const char *line) {
         send_status_now();
         send_deck_label_lines();
         send_sub_tile_label_lines();
-        send_bt_profile_name_lines();
+        send_bt_names_with_done();
+        return;
+    }
+
+    if (strstr(line, "cmd=req_names") != NULL) {
+        send_bt_names_with_done();
         return;
     }
 
@@ -759,7 +792,7 @@ static int esp32_status_init(void) {
     schedule_status_send();
     send_deck_label_lines();
     send_sub_tile_label_lines();
-    send_bt_profile_name_lines();
+    send_bt_names_with_done();
     k_work_reschedule(&periodic_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_PERIODIC_MS));
     return 0;
 }
