@@ -108,6 +108,11 @@ static volatile bool pending_command_ready;
 static int esp32_requested_transport = -1;
 static int esp32_requested_bt_profile = -1;
 static bool esp32_text_input_mode = false;
+static bool esp32_text_input_endpoint_parked = false;
+static enum zmk_transport esp32_text_input_saved_preferred = ZMK_TRANSPORT_NONE;
+static int esp32_text_input_saved_requested_transport = -1;
+static int esp32_text_input_saved_requested_bt_profile = -1;
+static void send_status_now(void);
 static const char *const deck_tile_labels[] = {
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_1_NODE, CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL),
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_2_NODE, CONFIG_ZMK_ESP32_DECK_TILE_2_LABEL),
@@ -559,6 +564,43 @@ static bool send_text_input_key(const struct zmk_keycode_state_changed *ev) {
     return true;
 }
 
+static void park_endpoint_for_text_input(void) {
+    if (esp32_text_input_endpoint_parked) {
+        return;
+    }
+
+    esp32_text_input_saved_preferred = zmk_endpoint_get_preferred_transport();
+    esp32_text_input_saved_requested_transport = esp32_requested_transport;
+    esp32_text_input_saved_requested_bt_profile = esp32_requested_bt_profile;
+    esp32_text_input_endpoint_parked = true;
+
+    esp32_requested_transport = ZMK_TRANSPORT_NONE;
+    esp32_requested_bt_profile = -1;
+    zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_NONE);
+    send_status_now();
+}
+
+static void restore_endpoint_after_text_input(void) {
+    if (!esp32_text_input_endpoint_parked) {
+        return;
+    }
+
+    zmk_hid_keyboard_clear();
+    zmk_hid_consumer_clear();
+
+    esp32_requested_transport = esp32_text_input_saved_requested_transport;
+    esp32_requested_bt_profile = esp32_text_input_saved_requested_bt_profile;
+    esp32_text_input_endpoint_parked = false;
+
+    if (esp32_requested_transport == ZMK_TRANSPORT_BLE && esp32_requested_bt_profile >= 0 &&
+        esp32_requested_bt_profile < ZMK_BLE_PROFILE_COUNT) {
+        zmk_ble_prof_select(esp32_requested_bt_profile);
+    }
+
+    zmk_endpoint_set_preferred_transport(esp32_text_input_saved_preferred);
+    send_status_now();
+}
+
 static void schedule_status_send(void) {
     k_work_reschedule(&send_status_work, K_MSEC(CONFIG_ZMK_ESP32_STATUS_UART_EVENT_DELAY_MS));
 }
@@ -758,8 +800,10 @@ static void handle_command_line(const char *line) {
     if (strstr(line, "cmd=input") != NULL) {
         if (strstr(line, "off") != NULL) {
             esp32_text_input_mode = false;
+            restore_endpoint_after_text_input();
         } else {
             esp32_text_input_mode = true;
+            park_endpoint_for_text_input();
         }
         return;
     }
