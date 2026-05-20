@@ -112,6 +112,7 @@ static bool esp32_text_input_endpoint_parked = false;
 static enum zmk_transport esp32_text_input_saved_preferred = ZMK_TRANSPORT_NONE;
 static int esp32_text_input_saved_requested_transport = -1;
 static int esp32_text_input_saved_requested_bt_profile = -1;
+static bool esp32_text_input_caps_lock = false;
 static void send_status_now(void);
 static const char *const deck_tile_labels[] = {
     ESP32_DECK_TILE_LABEL(ESP32_DECK_TILE_1_NODE, CONFIG_ZMK_ESP32_DECK_TILE_1_LABEL),
@@ -508,16 +509,19 @@ static void send_command_ack_line(const char *command)
     uart_write_string(line);
 }
 
-static char ascii_from_keycode(uint32_t keycode, bool shifted) {
+static char ascii_from_keycode(uint32_t keycode, bool shifted, bool caps_lock) {
     if (keycode >= 0x04 && keycode <= 0x1D) {
         char c = (char)('a' + (keycode - 0x04));
-        return shifted ? (char)(c - 32) : c;
+        return (shifted != caps_lock) ? (char)(c - 32) : c;
     }
     if (keycode >= 0x1E && keycode <= 0x27) {
         static const char normal[] = "1234567890";
         static const char shifted_chars[] = "!@#$%^&*()";
         int idx = keycode == 0x27 ? 9 : (int)(keycode - 0x1E);
         return shifted ? shifted_chars[idx] : normal[idx];
+    }
+    if (keycode >= 0x59 && keycode <= 0x61) {
+        return (char)('1' + (keycode - 0x59));
     }
 
     switch (keycode) {
@@ -533,6 +537,8 @@ static char ascii_from_keycode(uint32_t keycode, bool shifted) {
     case 0x36: return shifted ? '<' : ',';
     case 0x37: return shifted ? '>' : '.';
     case 0x38: return shifted ? '?' : '/';
+    case 0x62: return '0';
+    case 0x63: return '.';
     default: return '\0';
     }
 }
@@ -550,10 +556,18 @@ static bool send_text_input_key(const struct zmk_keycode_state_changed *ev) {
         uart_write_string("input=enter\n");
         return true;
     }
+    if (ev->keycode == 0x58) {
+        uart_write_string("input=enter\n");
+        return true;
+    }
+    if (ev->keycode == 0x39) {
+        esp32_text_input_caps_lock = !esp32_text_input_caps_lock;
+        return true;
+    }
 
     zmk_mod_flags_t mods = zmk_hid_get_keyboard_report()->body.modifiers | ev->implicit_modifiers;
     bool shifted = (mods & (MOD_LSFT | MOD_RSFT)) != 0;
-    char c = ascii_from_keycode(ev->keycode, shifted);
+    char c = ascii_from_keycode(ev->keycode, shifted, esp32_text_input_caps_lock);
     if (c == '\0') {
         return true;
     }
@@ -573,6 +587,7 @@ static void park_endpoint_for_text_input(void) {
     esp32_text_input_saved_requested_transport = esp32_requested_transport;
     esp32_text_input_saved_requested_bt_profile = esp32_requested_bt_profile;
     esp32_text_input_endpoint_parked = true;
+    esp32_text_input_caps_lock = false;
 
     esp32_requested_transport = ZMK_TRANSPORT_NONE;
     esp32_requested_bt_profile = -1;
