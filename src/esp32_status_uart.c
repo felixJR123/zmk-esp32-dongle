@@ -107,6 +107,8 @@ static size_t command_line_len;
 static volatile bool pending_command_ready;
 static int esp32_requested_transport = -1;
 static int esp32_requested_bt_profile = -1;
+static enum zmk_transport esp32_last_host_transport = ZMK_TRANSPORT_USB;
+static int esp32_last_host_bt_profile = -1;
 static bool esp32_text_input_mode = false;
 static bool esp32_text_input_endpoint_parked = false;
 static enum zmk_transport esp32_text_input_saved_preferred = ZMK_TRANSPORT_NONE;
@@ -578,6 +580,15 @@ static bool send_text_input_key(const struct zmk_keycode_state_changed *ev) {
     return true;
 }
 
+static void remember_host_transport(enum zmk_transport transport, int bt_profile) {
+    if (transport != ZMK_TRANSPORT_USB && transport != ZMK_TRANSPORT_BLE) {
+        return;
+    }
+
+    esp32_last_host_transport = transport;
+    esp32_last_host_bt_profile = transport == ZMK_TRANSPORT_BLE ? bt_profile : -1;
+}
+
 static void park_endpoint_for_text_input(void) {
     if (esp32_text_input_endpoint_parked) {
         return;
@@ -586,6 +597,22 @@ static void park_endpoint_for_text_input(void) {
     esp32_text_input_saved_preferred = zmk_endpoint_get_preferred_transport();
     esp32_text_input_saved_requested_transport = esp32_requested_transport;
     esp32_text_input_saved_requested_bt_profile = esp32_requested_bt_profile;
+
+    struct zmk_endpoint_instance selected_endpoint = zmk_endpoint_get_selected();
+    if (esp32_text_input_saved_preferred == ZMK_TRANSPORT_NONE &&
+        selected_endpoint.transport != ZMK_TRANSPORT_NONE) {
+        esp32_text_input_saved_preferred = selected_endpoint.transport;
+    }
+    if (esp32_requested_transport == ZMK_TRANSPORT_USB) {
+        remember_host_transport(ZMK_TRANSPORT_USB, -1);
+    } else if (esp32_requested_transport == ZMK_TRANSPORT_BLE) {
+        remember_host_transport(ZMK_TRANSPORT_BLE, esp32_requested_bt_profile);
+    } else if (selected_endpoint.transport == ZMK_TRANSPORT_USB) {
+        remember_host_transport(ZMK_TRANSPORT_USB, -1);
+    } else if (selected_endpoint.transport == ZMK_TRANSPORT_BLE) {
+        remember_host_transport(ZMK_TRANSPORT_BLE, selected_endpoint.ble.profile_index);
+    }
+
     esp32_text_input_endpoint_parked = true;
     esp32_text_input_caps_lock = false;
 
@@ -603,16 +630,33 @@ static void restore_endpoint_after_text_input(void) {
     zmk_hid_keyboard_clear();
     zmk_hid_consumer_clear();
 
-    esp32_requested_transport = esp32_text_input_saved_requested_transport;
-    esp32_requested_bt_profile = esp32_text_input_saved_requested_bt_profile;
-    esp32_text_input_endpoint_parked = false;
-
-    if (esp32_requested_transport == ZMK_TRANSPORT_BLE && esp32_requested_bt_profile >= 0 &&
-        esp32_requested_bt_profile < ZMK_BLE_PROFILE_COUNT) {
-        zmk_ble_prof_select(esp32_requested_bt_profile);
+    enum zmk_transport restore_transport = esp32_text_input_saved_preferred;
+    int restore_bt_profile = esp32_text_input_saved_requested_bt_profile;
+    if (restore_transport == ZMK_TRANSPORT_NONE) {
+        if (esp32_text_input_saved_requested_transport == ZMK_TRANSPORT_USB ||
+            esp32_text_input_saved_requested_transport == ZMK_TRANSPORT_BLE) {
+            restore_transport = esp32_text_input_saved_requested_transport;
+        } else {
+            restore_transport = esp32_last_host_transport;
+            restore_bt_profile = esp32_last_host_bt_profile;
+        }
     }
 
-    zmk_endpoint_set_preferred_transport(esp32_text_input_saved_preferred);
+    esp32_requested_transport = esp32_text_input_saved_requested_transport;
+    esp32_requested_bt_profile = esp32_text_input_saved_requested_bt_profile;
+    if (esp32_requested_transport != ZMK_TRANSPORT_USB &&
+        esp32_requested_transport != ZMK_TRANSPORT_BLE) {
+        esp32_requested_transport = restore_transport;
+        esp32_requested_bt_profile = restore_transport == ZMK_TRANSPORT_BLE ? restore_bt_profile : -1;
+    }
+    esp32_text_input_endpoint_parked = false;
+
+    if (restore_transport == ZMK_TRANSPORT_BLE && restore_bt_profile >= 0 &&
+        restore_bt_profile < ZMK_BLE_PROFILE_COUNT) {
+        zmk_ble_prof_select(restore_bt_profile);
+    }
+
+    zmk_endpoint_set_preferred_transport(restore_transport);
     send_status_now();
 }
 
@@ -826,6 +870,7 @@ static void handle_command_line(const char *line) {
     if (strstr(line, "cmd=usb") != NULL) {
         esp32_requested_transport = ZMK_TRANSPORT_USB;
         esp32_requested_bt_profile = -1;
+        remember_host_transport(ZMK_TRANSPORT_USB, -1);
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_USB);
         send_status_now();
         return;
@@ -838,6 +883,7 @@ static void handle_command_line(const char *line) {
             esp32_requested_bt_profile = profile;
         }
         esp32_requested_transport = ZMK_TRANSPORT_BLE;
+        remember_host_transport(ZMK_TRANSPORT_BLE, esp32_requested_bt_profile);
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_BLE);
         send_status_now();
         k_msleep(80);
