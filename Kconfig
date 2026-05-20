@@ -2,7 +2,6 @@ menuconfig ZMK_ESP32_STATUS_UART
     bool "ESP32 display status UART"
     default n
     depends on SERIAL
-    select BT_DEVICE_NAME_DYNAMIC
     help
       Sends a compact keyboard status line to an ESP32 display over UART.
 

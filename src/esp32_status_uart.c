@@ -34,7 +34,6 @@
 #include <zmk/events/wpm_state_changed.h>
 #endif
 #include <zmk/usb.h>
-#include <zephyr/bluetooth/bluetooth.h>
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
 #define HID_LED_CAPS_LOCK BIT(1)
@@ -181,7 +180,6 @@ static void receive_command_work_handler(struct k_work *work);
 static void bt_names_retry_work_handler(struct k_work *work);
 static void deck_labels_retry_work_handler(struct k_work *work);
 static void sub_tile_labels_retry_work_handler(struct k_work *work);
-static void update_adv_name_work_handler(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(send_status_work, send_status_work_handler);
 K_WORK_DELAYABLE_DEFINE(periodic_status_work, periodic_status_work_handler);
@@ -189,7 +187,6 @@ K_WORK_DELAYABLE_DEFINE(receive_command_work, receive_command_work_handler);
 K_WORK_DELAYABLE_DEFINE(bt_names_retry_work, bt_names_retry_work_handler);
 K_WORK_DELAYABLE_DEFINE(deck_labels_retry_work, deck_labels_retry_work_handler);
 K_WORK_DELAYABLE_DEFINE(sub_tile_labels_retry_work, sub_tile_labels_retry_work_handler);
-K_WORK_DELAYABLE_DEFINE(update_adv_name_work, update_adv_name_work_handler);
 
 static bool bt_names_ack_pending = false;
 static bool deck_labels_ack_pending = false;
@@ -374,23 +371,6 @@ static void sub_tile_labels_retry_work_handler(struct k_work *work) {
     if (sub_tile_labels_ack_pending) {
         send_sub_tile_labels_with_done();
     }
-}
-
-/* Mirrors zmk_ble_ad in ZMK's ble.c so we can push an updated device name
-   into the advertising packet without patching ZMK core. */
-static void update_adv_name_work_handler(struct k_work *work) {
-    const char *name = bt_get_name();
-    struct bt_data ad[] = {
-        BT_DATA(BT_DATA_NAME_COMPLETE, name, strlen(name)),
-        BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, 0xC1, 0x03),
-        BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
-        BT_DATA_BYTES(BT_DATA_UUID16_SOME, 0x12, 0x18, 0x0f, 0x18),
-    };
-    bt_le_adv_update_data(ad, ARRAY_SIZE(ad), NULL, 0);
-}
-
-static void schedule_adv_name_update(void) {
-    k_work_reschedule(&update_adv_name_work, K_MSEC(500));
 }
 
 static void send_bt_profile_name_line(int profile, const char *name) {
@@ -682,11 +662,7 @@ static void handle_command_line(const char *line) {
     if (strstr(line, "cmd=bt") != NULL) {
         int profile = command_profile_index(line);
         if (profile >= 0 && profile < ZMK_BLE_PROFILE_COUNT) {
-            char name[CONFIG_BT_DEVICE_NAME_MAX + 1];
-            snprintf(name, sizeof(name), "%s-BT%d", CONFIG_BT_DEVICE_NAME, profile + 1);
-            bt_set_name(name);
             zmk_ble_prof_select(profile);
-            schedule_adv_name_update();
         }
         zmk_endpoint_set_preferred_transport(ZMK_TRANSPORT_BLE);
         send_status_now();
@@ -878,14 +854,6 @@ static int esp32_status_init(void) {
     k_work_reschedule(&receive_command_work, K_MSEC(30));
 #endif
 
-    {
-        char name[CONFIG_BT_DEVICE_NAME_MAX + 1];
-        snprintf(name, sizeof(name), "%s-BT%d",
-                 CONFIG_BT_DEVICE_NAME,
-                 zmk_ble_active_profile_index() + 1);
-        bt_set_name(name);
-    }
-    schedule_adv_name_update();
     schedule_status_send();
     send_deck_labels_with_done();
     send_sub_tile_labels_with_done();
