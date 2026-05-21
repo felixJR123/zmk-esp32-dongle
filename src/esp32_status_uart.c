@@ -446,11 +446,30 @@ static void send_bt_profile_name_lines(void) {
     }
 }
 
+static void send_bt_bond_status_lines(void) {
+    int active = zmk_ble_active_profile_index();
+    int count = MIN((int)ARRAY_SIZE(bt_profile_names), ZMK_BLE_PROFILE_COUNT);
+    char line[32];
+    for (int i = 0; i < count; i++) {
+        bool bonded;
+        if (i == active) {
+            bonded = !zmk_ble_active_profile_is_open();
+        } else if (zmk_ble_profile_is_connected(i)) {
+            bonded = true;
+        } else {
+            continue; /* unknown — let dongle keep its NVS state */
+        }
+        snprintf(line, sizeof(line), "bt_bond=%d bonded=%d\n", i + 1, bonded ? 1 : 0);
+        uart_write_string(line);
+    }
+}
+
 static void send_bt_names_with_done(void) {
     if (!device_is_ready(status_uart)) {
         return;
     }
     send_bt_profile_name_lines();
+    send_bt_bond_status_lines();
     uart_write_string("bt_names_done\n");
     bt_names_ack_pending = true;
     k_work_reschedule(&bt_names_retry_work, K_MSEC(1000));
