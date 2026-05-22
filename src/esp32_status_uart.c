@@ -111,6 +111,7 @@ static int esp32_requested_transport = -1;
 static int esp32_requested_bt_profile = -1;
 static bool esp32_volume_muted = false;
 static int64_t esp32_mute_suppress_until = 0;
+static bool esp32_skip_invoked_mute_report = false;
 static enum zmk_transport esp32_last_host_transport = ZMK_TRANSPORT_USB;
 static int esp32_last_host_bt_profile = -1;
 static bool esp32_text_input_mode = false;
@@ -845,6 +846,10 @@ static int invoke_deck_tile(int tile) {
         .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
 #endif
     };
+    const bool reports_mute = binding_is_mute_key(binding);
+    if (reports_mute) {
+        esp32_mute_suppress_until = k_uptime_get() + 100;
+    }
 
     int ret = zmk_behavior_invoke_binding(binding, event, true);
     if (ret < 0) {
@@ -854,7 +859,7 @@ static int invoke_deck_tile(int tile) {
     k_msleep(10);
     event.timestamp = k_uptime_get();
     ret = zmk_behavior_invoke_binding(binding, event, false);
-    if (ret >= 0 && binding_is_mute_key(binding)) {
+    if (ret >= 0 && reports_mute) {
         report_mute_toggle_from_binding();
     }
     return ret;
@@ -881,6 +886,10 @@ static int invoke_sub_tile(int parent, int sub)
         .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
 #endif
     };
+    const bool reports_mute = binding_is_mute_key(binding);
+    if (reports_mute) {
+        esp32_mute_suppress_until = k_uptime_get() + 100;
+    }
 
     int ret = zmk_behavior_invoke_binding(binding, event, true);
     if (ret < 0) {
@@ -890,7 +899,7 @@ static int invoke_sub_tile(int parent, int sub)
     k_msleep(10);
     event.timestamp = k_uptime_get();
     ret = zmk_behavior_invoke_binding(binding, event, false);
-    if (ret >= 0 && binding_is_mute_key(binding)) {
+    if (ret >= 0 && reports_mute) {
         report_mute_toggle_from_binding();
     }
     return ret;
@@ -914,6 +923,10 @@ static int invoke_volume_binding(int index) {
         .source = ZMK_POSITION_STATE_CHANGE_SOURCE_LOCAL,
 #endif
     };
+    const bool reports_mute = binding_is_mute_key(binding);
+    if (reports_mute) {
+        esp32_mute_suppress_until = k_uptime_get() + 100;
+    }
     int ret = zmk_behavior_invoke_binding(binding, event, true);
     if (ret < 0) {
         return ret;
@@ -921,8 +934,12 @@ static int invoke_volume_binding(int index) {
     k_msleep(10);
     event.timestamp = k_uptime_get();
     ret = zmk_behavior_invoke_binding(binding, event, false);
-    if (ret >= 0 && binding_is_mute_key(binding)) {
-        report_mute_toggle_from_binding();
+    if (ret >= 0 && reports_mute) {
+        if (esp32_skip_invoked_mute_report) {
+            esp32_skip_invoked_mute_report = false;
+        } else {
+            report_mute_toggle_from_binding();
+        }
     }
     return ret;
 }
@@ -1056,6 +1073,7 @@ static void handle_command_line(const char *line) {
                 esp32_volume_muted = requested_muted;
                 send_mute_state_line();
                 esp32_mute_suppress_until = k_uptime_get() + 100;
+                esp32_skip_invoked_mute_report = true;
             }
             invoke_volume_binding(2);
         }
