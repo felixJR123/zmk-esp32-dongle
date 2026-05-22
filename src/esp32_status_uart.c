@@ -758,6 +758,25 @@ static int command_tile_number(const char *line) {
     return atoi(tile + strlen("tile="));
 }
 
+static bool command_bool_value(const char *line, const char *key, bool *value) {
+    const char *match = strstr(line, key);
+    if (match == NULL) {
+        return false;
+    }
+
+    match += strlen(key);
+    if (*match == '1' || strncmp(match, "on", 2) == 0 || strncmp(match, "true", 4) == 0) {
+        *value = true;
+        return true;
+    }
+    if (*match == '0' || strncmp(match, "off", 3) == 0 || strncmp(match, "false", 5) == 0) {
+        *value = false;
+        return true;
+    }
+
+    return false;
+}
+
 static void parse_tile_spec(const char *line, int *parent, int *sub)
 {
     *parent = 0;
@@ -1031,6 +1050,13 @@ static void handle_command_line(const char *line) {
         } else if (strstr(line, "down") != NULL) {
             invoke_volume_binding(1);
         } else if (strstr(line, "mute") != NULL) {
+            bool requested_muted;
+            if (command_bool_value(line, "state=", &requested_muted) ||
+                command_bool_value(line, "mute=", &requested_muted)) {
+                esp32_volume_muted = requested_muted;
+                send_mute_state_line();
+                esp32_mute_suppress_until = k_uptime_get() + 100;
+            }
             invoke_volume_binding(2);
         }
         return;
