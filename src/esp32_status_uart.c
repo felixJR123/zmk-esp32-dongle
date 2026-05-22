@@ -110,7 +110,6 @@ static volatile bool pending_command_ready;
 static int esp32_requested_transport = -1;
 static int esp32_requested_bt_profile = -1;
 static bool esp32_volume_muted = false;
-static bool esp32_suppress_next_mute_event = false;
 static enum zmk_transport esp32_last_host_transport = ZMK_TRANSPORT_USB;
 static int esp32_last_host_bt_profile = -1;
 static bool esp32_text_input_mode = false;
@@ -993,9 +992,6 @@ static void handle_command_line(const char *line) {
         } else if (strstr(line, "down") != NULL) {
             invoke_volume_binding(1);
         } else if (strstr(line, "mute") != NULL) {
-            esp32_volume_muted = !esp32_volume_muted;
-            send_mute_state_line();
-            esp32_suppress_next_mute_event = true;
             invoke_volume_binding(2);
         }
         return;
@@ -1055,12 +1051,8 @@ static int esp32_status_listener(const zmk_event_t *eh) {
             return ZMK_EV_EVENT_HANDLED;
         }
         if (keycode_ev->state && is_mute_keycode(keycode_ev)) {
-            if (esp32_suppress_next_mute_event) {
-                esp32_suppress_next_mute_event = false;
-            } else {
-                esp32_volume_muted = !esp32_volume_muted;
-                send_mute_state_line();
-            }
+            esp32_volume_muted = !esp32_volume_muted;
+            send_mute_state_line();
         }
         schedule_status_send();
         return 0;
