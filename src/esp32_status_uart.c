@@ -110,6 +110,7 @@ static volatile bool pending_command_ready;
 static int esp32_requested_transport = -1;
 static int esp32_requested_bt_profile = -1;
 static bool esp32_volume_muted = false;
+static int64_t esp32_mute_suppress_until = 0;
 static enum zmk_transport esp32_last_host_transport = ZMK_TRANSPORT_USB;
 static int esp32_last_host_bt_profile = -1;
 static bool esp32_text_input_mode = false;
@@ -223,6 +224,32 @@ static bool is_mute_keycode(const struct zmk_keycode_state_changed *ev) {
     return (ev->usage_page == HID_USAGE_CONSUMER && ev->keycode == HID_USAGE_CONSUMER_MUTE) ||
            (ev->usage_page == HID_USAGE_KEY && ev->keycode == HID_USAGE_KEY_KEYBOARD_MUTE) ||
            (ev->usage_page == HID_USAGE_KEY && ev->keycode == 0xEF);
+}
+
+static bool is_mute_usage(uint16_t usage_page, uint32_t keycode) {
+    return (usage_page == HID_USAGE_CONSUMER && keycode == HID_USAGE_CONSUMER_MUTE) ||
+           (usage_page == HID_USAGE_KEY && keycode == HID_USAGE_KEY_KEYBOARD_MUTE) ||
+           (usage_page == HID_USAGE_KEY && keycode == 0xEF);
+}
+
+static bool binding_is_mute_key(const struct zmk_behavior_binding *binding) {
+    if (binding == NULL || binding->behavior_dev == NULL) {
+        return false;
+    }
+
+    uint16_t usage_page = ZMK_HID_USAGE_PAGE(binding->param1);
+    uint32_t keycode = ZMK_HID_USAGE_ID(binding->param1);
+    if (!usage_page) {
+        usage_page = HID_USAGE_KEY;
+    }
+
+    return is_mute_usage(usage_page, keycode);
+}
+
+static void report_mute_toggle_from_binding(void) {
+    esp32_volume_muted = !esp32_volume_muted;
+    send_mute_state_line();
+    esp32_mute_suppress_until = k_uptime_get() + 100;
 }
 
 static int peripheral_count(void) {
@@ -807,7 +834,11 @@ static int invoke_deck_tile(int tile) {
 
     k_msleep(10);
     event.timestamp = k_uptime_get();
-    return zmk_behavior_invoke_binding(binding, event, false);
+    ret = zmk_behavior_invoke_binding(binding, event, false);
+    if (ret >= 0 && binding_is_mute_key(binding)) {
+        report_mute_toggle_from_binding();
+    }
+    return ret;
 }
 
 static int invoke_sub_tile(int parent, int sub)
@@ -839,7 +870,11 @@ static int invoke_sub_tile(int parent, int sub)
 
     k_msleep(10);
     event.timestamp = k_uptime_get();
-    return zmk_behavior_invoke_binding(binding, event, false);
+    ret = zmk_behavior_invoke_binding(binding, event, false);
+    if (ret >= 0 && binding_is_mute_key(binding)) {
+        report_mute_toggle_from_binding();
+    }
+    return ret;
 }
 
 static int invoke_volume_binding(int index) {
@@ -866,7 +901,11 @@ static int invoke_volume_binding(int index) {
     }
     k_msleep(10);
     event.timestamp = k_uptime_get();
-    return zmk_behavior_invoke_binding(binding, event, false);
+    ret = zmk_behavior_invoke_binding(binding, event, false);
+    if (ret >= 0 && binding_is_mute_key(binding)) {
+        report_mute_toggle_from_binding();
+    }
+    return ret;
 }
 
 static void handle_command_line(const char *line) {
@@ -1051,8 +1090,13 @@ static int esp32_status_listener(const zmk_event_t *eh) {
             return ZMK_EV_EVENT_HANDLED;
         }
         if (keycode_ev->state && is_mute_keycode(keycode_ev)) {
-            esp32_volume_muted = !esp32_volume_muted;
-            send_mute_state_line();
+            int64_t now = k_uptime_get();
+            if (esp32_mute_suppress_until > 0 && now < esp32_mute_suppress_until) {
+                esp32_mute_suppress_until = 0;
+            } else {
+                esp32_volume_muted = !esp32_volume_muted;
+                send_mute_state_line();
+            }
         }
         schedule_status_send();
         return 0;
