@@ -8,6 +8,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
+#include <dt-bindings/zmk/hid_usage.h>
+#include <dt-bindings/zmk/hid_usage_pages.h>
 #include <hal/nrf_power.h>
 #include <hal/nrf_usbd.h>
 
@@ -107,6 +109,8 @@ static size_t command_line_len;
 static volatile bool pending_command_ready;
 static int esp32_requested_transport = -1;
 static int esp32_requested_bt_profile = -1;
+static bool esp32_volume_muted = false;
+static bool esp32_suppress_next_mute_event = false;
 static enum zmk_transport esp32_last_host_transport = ZMK_TRANSPORT_USB;
 static int esp32_last_host_bt_profile = -1;
 static bool esp32_text_input_mode = false;
@@ -208,6 +212,18 @@ static void uart_write_string(const char *text) {
     for (const char *p = text; *p != '\0'; p++) {
         uart_poll_out(status_uart, *p);
     }
+}
+
+static void send_mute_state_line(void) {
+    char line[16];
+    snprintf(line, sizeof(line), "mute=%d\n", esp32_volume_muted ? 1 : 0);
+    uart_write_string(line);
+}
+
+static bool is_mute_keycode(const struct zmk_keycode_state_changed *ev) {
+    return (ev->usage_page == HID_USAGE_CONSUMER && ev->keycode == HID_USAGE_CONSUMER_MUTE) ||
+           (ev->usage_page == HID_USAGE_KEY && ev->keycode == HID_USAGE_KEY_KEYBOARD_MUTE) ||
+           (ev->usage_page == HID_USAGE_KEY && ev->keycode == 0xEF);
 }
 
 static int peripheral_count(void) {
@@ -322,14 +338,14 @@ static void send_status_line(void) {
     char line[260];
     snprintf(line, sizeof(line),
              "layer=%s usb=%d bt=%d bt_slot=%d conn=%s ctrl=%d alt=%d win=%d shift=%d "
-             "capslock=%d wpm=%d display=%s bt_open=%d usb_avail=%d usb_vbus=%d usb_hid=%d "
+             "capslock=%d wpm=%d mute=%d display=%s bt_open=%d usb_avail=%d usb_vbus=%d usb_hid=%d "
              "usb_sof=%d bt_profiles=%d peripherals=%d batt=",
              layer_value, usb_ready ? 1 : 0, bt_connected ? 1 : 0, bt_slot, conn,
              (modifiers & (MOD_LCTL | MOD_RCTL)) ? 1 : 0,
              (modifiers & (MOD_LALT | MOD_RALT)) ? 1 : 0,
              (modifiers & (MOD_LGUI | MOD_RGUI)) ? 1 : 0,
              (modifiers & (MOD_LSFT | MOD_RSFT)) ? 1 : 0,
-             capslock, current_wpm, display,
+             capslock, current_wpm, esp32_volume_muted ? 1 : 0, display,
              zmk_ble_active_profile_is_open() ? 1 : 0,
              usb_ready ? 1 : 0,
              usb_vbus ? 1 : 0,
@@ -977,6 +993,9 @@ static void handle_command_line(const char *line) {
         } else if (strstr(line, "down") != NULL) {
             invoke_volume_binding(1);
         } else if (strstr(line, "mute") != NULL) {
+            esp32_volume_muted = !esp32_volume_muted;
+            send_mute_state_line();
+            esp32_suppress_next_mute_event = true;
             invoke_volume_binding(2);
         }
         return;
@@ -1034,6 +1053,14 @@ static int esp32_status_listener(const zmk_event_t *eh) {
     if (keycode_ev != NULL) {
         if (send_text_input_key(keycode_ev)) {
             return ZMK_EV_EVENT_HANDLED;
+        }
+        if (keycode_ev->state && is_mute_keycode(keycode_ev)) {
+            if (esp32_suppress_next_mute_event) {
+                esp32_suppress_next_mute_event = false;
+            } else {
+                esp32_volume_muted = !esp32_volume_muted;
+                send_mute_state_line();
+            }
         }
         schedule_status_send();
         return 0;
