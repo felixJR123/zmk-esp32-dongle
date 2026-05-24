@@ -7,6 +7,15 @@ menuconfig ZMK_ESP32_STATUS_UART
 
 if ZMK_ESP32_STATUS_UART
 
+config ZMK_ESP32_STATUS_UART_ZMK_V3
+    bool "ZMK v3 compatibility (board names: nice_nano_v2, seeeduino_xiao_ble)"
+    default n
+    help
+      Enable when building against ZMK that uses pre-Studio board names
+      (nice_nano_v2, seeeduino_xiao_ble). Adds shims for the layer ID API
+      split introduced in ZMK v4/Studio: zmk_keymap_layer_id_t and
+      zmk_keymap_layer_index_to_id() are not available in ZMK v3.
+
 config ZMK_ESP32_STATUS_UART_PERIODIC_MS
     int "Periodic status refresh interval"
     default 5000

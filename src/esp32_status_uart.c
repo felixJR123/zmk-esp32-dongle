@@ -38,6 +38,19 @@
 #endif
 #include <zmk/usb.h>
 
+#if IS_ENABLED(CONFIG_ZMK_ESP32_STATUS_UART_ZMK_V3)
+/* ZMK v3 has no layer-ID/index split: index == id, and layer_name() takes the
+ * index directly. These shims let the v4-style calls compile unchanged. */
+typedef zmk_keymap_layer_index_t zmk_keymap_layer_id_t;
+static inline zmk_keymap_layer_id_t zmk_keymap_layer_index_to_id(zmk_keymap_layer_index_t idx) {
+    return idx;
+}
+/* ZMK v3 may not define ZMK_TRANSPORT_NONE; use 0xFF as a sentinel. */
+#ifndef ZMK_TRANSPORT_NONE
+#define ZMK_TRANSPORT_NONE 0xFF
+#endif
+#endif /* CONFIG_ZMK_ESP32_STATUS_UART_ZMK_V3 */
+
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
 #define HID_LED_CAPS_LOCK BIT(1)
 #define BT_PROFILE_NAMES_NODE DT_PATH(bt_profile_names)

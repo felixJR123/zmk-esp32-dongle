@@ -48,13 +48,52 @@ label for a tile, that SD card visual config wins over labels sent by ZMK.
 
 UART speed is `115200`.
 
+## ZMK Version Compatibility
+
+This module supports both current ZMK (v4, with ZMK-native board names) and
+older ZMK (v3, with pre-Studio board names). The UART protocol is identical
+between versions — the ESP32 display needs no changes.
+
+### Board names
+
+| Board | ZMK v4 (current) | ZMK v3 (pre-Studio) |
+| --- | --- | --- |
+| nice!nano v2 | `nice_nano//zmk` | `nice_nano_v2` |
+| Seeeduino XIAO BLE | `xiao_ble//zmk` | `seeeduino_xiao_ble` |
+
+Both sets of board overlays are included in this module — the build system
+picks the right one automatically based on the board target you pass to west.
+
+### `.conf` difference
+
+**ZMK v4** — nothing extra needed.
+
+**ZMK v3** — add one line to your keyboard `.conf`:
+
+```conf
+CONFIG_ZMK_ESP32_STATUS_UART_ZMK_V3=y
+```
+
+This enables shims for the layer-ID API that was introduced in ZMK v4. Without
+it the build will fail with missing `zmk_keymap_layer_id_t` symbols on v3.
+Everything else (`west.yml` module reference, shield name, all other config
+options) is identical between v3 and v4.
+
 ## Build
 
 Add this folder as a ZMK module, then stack the shield with your real keyboard
 shield:
 
+**ZMK v4:**
+
 ```sh
 west build -b nice_nano//zmk -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
+```
+
+**ZMK v3:**
+
+```sh
+west build -b nice_nano_v2 -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
 ```
 
 For a GitHub Actions ZMK config, add this repository/module to `config/west.yml`
@@ -107,27 +146,36 @@ manifest:
 Add `esp32_status_dongle` beside your normal keyboard shield. Example
 `build.yaml`:
 
+**ZMK v4 (current):**
+
 ```yaml
 include:
   - board: nice_nano//zmk
     shield: your_keyboard_shield esp32_status_dongle
-```
-
-For Xiao BLE builds, use your Xiao board name and the same shield:
-
-```yaml
-include:
   - board: xiao_ble//zmk
     shield: your_keyboard_shield esp32_status_dongle
 ```
 
-You can also spell the same ZMK board variants with the full SoC qualifier, for
-example `nice_nano/nrf52840/zmk` or `xiao_ble/nrf52840/zmk`.
+You can also spell the v4 variants with the full SoC qualifier:
+`nice_nano/nrf52840/zmk` or `xiao_ble/nrf52840/zmk`.
+
+**ZMK v3 (pre-Studio):**
+
+```yaml
+include:
+  - board: nice_nano_v2
+    shield: your_keyboard_shield esp32_status_dongle
+  - board: seeeduino_xiao_ble
+    shield: your_keyboard_shield esp32_status_dongle
+```
 
 Local build example:
 
 ```sh
+# ZMK v4
 west build -b nice_nano//zmk -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
+# ZMK v3
+west build -b nice_nano_v2 -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
 ```
 
 ### 3. Add Deck Labels In Your `.overlay`

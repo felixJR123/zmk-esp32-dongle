@@ -1,0 +1,10 @@
+/*
+ * The Seeeduino XIAO BLE board maps xiao_serial to D6 TX (P1.11)
+ * and D7 RX (P1.12). ZMK disables xiao_serial by default, so the shield
+ * only re-enables it here and leaves the board pinctrl untouched.
+ */
+
+&xiao_serial {
+    status = "okay";
+    current-speed = <115200>;
+};
