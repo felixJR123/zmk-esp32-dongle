@@ -1,0 +1,6 @@
+/*
+ * Zephyr 4.1 / HWMv2 board target alias for xiao_ble//zmk
+ * and xiao_ble/nrf52840/zmk.
+ */
+
+#include "xiao_ble_zmk.overlay"

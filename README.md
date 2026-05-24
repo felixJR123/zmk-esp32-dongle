@@ -54,7 +54,7 @@ Add this folder as a ZMK module, then stack the shield with your real keyboard
 shield:
 
 ```sh
-west build -b nice_nano_v2 -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
+west build -b nice_nano//zmk -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
 ```
 
 For a GitHub Actions ZMK config, add this repository/module to `config/west.yml`
@@ -109,7 +109,7 @@ Add `esp32_status_dongle` beside your normal keyboard shield. Example
 
 ```yaml
 include:
-  - board: nice_nano_v2
+  - board: nice_nano//zmk
     shield: your_keyboard_shield esp32_status_dongle
 ```
 
@@ -117,14 +117,17 @@ For Xiao BLE builds, use your Xiao board name and the same shield:
 
 ```yaml
 include:
-  - board: seeeduino_xiao_ble
+  - board: xiao_ble//zmk
     shield: your_keyboard_shield esp32_status_dongle
 ```
+
+You can also spell the same ZMK board variants with the full SoC qualifier, for
+example `nice_nano/nrf52840/zmk` or `xiao_ble/nrf52840/zmk`.
 
 Local build example:
 
 ```sh
-west build -b nice_nano_v2 -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
+west build -b nice_nano//zmk -- -DSHIELD="your_keyboard_shield esp32_status_dongle"
 ```
 
 ### 3. Add Deck Labels In Your `.overlay`

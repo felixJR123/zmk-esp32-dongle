@@ -1,0 +1,6 @@
+/*
+ * Zephyr 4.1 / HWMv2 board target alias for nice_nano//zmk
+ * and nice_nano/nrf52840/zmk.
+ */
+
+#include "nice_nano_zmk.overlay"
