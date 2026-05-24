@@ -39,9 +39,18 @@
 #include <zmk/usb.h>
 
 #if IS_ENABLED(CONFIG_ZMK_ESP32_STATUS_UART_ZMK_V3)
-/* Current ZMK v3 declares zmk_keymap_layer_index_to_id in zmk/keymap.h, so no
- * function shim is needed. Alias the type in case ZMK v3 does not define it. */
+/* Layer type alias: ZMK v3 already declares zmk_keymap_layer_index_to_id. */
 typedef zmk_keymap_layer_index_t zmk_keymap_layer_id_t;
+/* Endpoint API shims: ZMK v3 renamed these functions. */
+static inline struct zmk_endpoint_instance zmk_endpoint_get_selected(void) {
+    return zmk_endpoints_selected();
+}
+static inline int zmk_endpoint_set_preferred_transport(enum zmk_transport t) {
+    return zmk_endpoints_select_transport(t);
+}
+static inline enum zmk_transport zmk_endpoint_get_preferred_transport(void) {
+    return zmk_endpoints_selected().transport;
+}
 /* ZMK v3 may not define ZMK_TRANSPORT_NONE; use 0xFF as a sentinel. */
 #ifndef ZMK_TRANSPORT_NONE
 #define ZMK_TRANSPORT_NONE 0xFF
