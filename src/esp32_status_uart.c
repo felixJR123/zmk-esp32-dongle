@@ -1076,7 +1076,8 @@ static void handle_command_line(const char *line) {
 
     if (strstr(line, "cmd=boot") != NULL) {
         nrf_power_gpregret_set(NRF_POWER, 0, 0x57);
-        sys_reboot(SYS_REBOOT_COLD);
+        /* Use direct ARM reset to bypass Zephyr reboot hooks that can clear GPREGRET in Zephyr 3.x (ZMK v3). */
+        NVIC_SystemReset();
         return;
     }
 
