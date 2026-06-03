@@ -41,20 +41,28 @@
 #if IS_ENABLED(CONFIG_ZMK_ESP32_STATUS_UART_ZMK_V3)
 /* Layer type alias: ZMK v3 already declares zmk_keymap_layer_index_to_id. */
 typedef zmk_keymap_layer_index_t zmk_keymap_layer_id_t;
+/* ZMK v3 has no ZMK_TRANSPORT_NONE sentinel — define one for our state tracking. */
+#ifndef ZMK_TRANSPORT_NONE
+#define ZMK_TRANSPORT_NONE 0xFF
+#endif
 /* Endpoint API shims: ZMK v3 renamed these functions. */
 static inline struct zmk_endpoint_instance zmk_endpoint_get_selected(void) {
     return zmk_endpoints_selected();
 }
 static inline int zmk_endpoint_set_preferred_transport(enum zmk_transport t) {
+    if ((uint8_t)t == ZMK_TRANSPORT_NONE) {
+        /* zmk_endpoints_select_transport rejects 0xFF (invalid transport) in ZMK v3.
+           Instead, flush the HID keyboard report so nothing is sent to the host
+           while text input mode is active. */
+        zmk_hid_keyboard_clear();
+        zmk_hid_consumer_clear();
+        return 0;
+    }
     return zmk_endpoints_select_transport(t);
 }
 static inline enum zmk_transport zmk_endpoint_get_preferred_transport(void) {
     return zmk_endpoints_selected().transport;
 }
-/* ZMK v3 may not define ZMK_TRANSPORT_NONE; use 0xFF as a sentinel. */
-#ifndef ZMK_TRANSPORT_NONE
-#define ZMK_TRANSPORT_NONE 0xFF
-#endif
 #endif /* CONFIG_ZMK_ESP32_STATUS_UART_ZMK_V3 */
 
 #define STATUS_UART_NODE DT_NODELABEL(uart0)
@@ -652,12 +660,18 @@ static bool send_text_input_key(const struct zmk_keycode_state_changed *ev) {
     bool shifted = (mods & (MOD_LSFT | MOD_RSFT)) != 0;
     char c = ascii_from_keycode(ev->keycode, shifted, esp32_text_input_caps_lock);
     if (c == '\0') {
+        zmk_hid_keyboard_clear();
         return true;
     }
 
     char line[16];
     snprintf(line, sizeof(line), "input=%02X\n", (unsigned char)c);
     uart_write_string(line);
+    /* Clear the HID keyboard report for every intercepted key.  In ZMK v3 the
+       HID listener may run before this one (link order), so it could have
+       already added the key to the report.  Clearing here ensures the async
+       HID-send work item sees an empty report and nothing reaches the PC. */
+    zmk_hid_keyboard_clear();
     return true;
 }
 
