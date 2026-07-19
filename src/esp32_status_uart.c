@@ -635,8 +635,15 @@ static char ascii_from_keycode(uint32_t keycode, bool shifted, bool caps_lock) {
 }
 
 static bool send_text_input_key(const struct zmk_keycode_state_changed *ev) {
-    if (!esp32_text_input_mode || ev == NULL || !ev->state || ev->usage_page != 0x07) {
+    if (!esp32_text_input_mode || ev == NULL || ev->usage_page != HID_USAGE_KEY) {
         return false;
+    }
+
+    if (!ev->state) {
+        /* Swallow the matching release too, so hid_listener never sees either
+           half of the press/release pair for a key we've already reported
+           over UART as an "input=" line. */
+        return true;
     }
 
     if (ev->keycode == 0x2A) {
@@ -667,10 +674,11 @@ static bool send_text_input_key(const struct zmk_keycode_state_changed *ev) {
     char line[16];
     snprintf(line, sizeof(line), "input=%02X\n", (unsigned char)c);
     uart_write_string(line);
-    /* Clear the HID keyboard report for every intercepted key.  In ZMK v3 the
-       HID listener may run before this one (link order), so it could have
-       already added the key to the report.  Clearing here ensures the async
-       HID-send work item sees an empty report and nothing reaches the PC. */
+    /* Belt-and-suspenders: this listener is linked directly into the `app`
+       target ahead of ZMK's own core sources (see CMakeLists.txt), so
+       hid_listener never even sees a captured key's press event and never
+       touches the report for it. Clear here anyway in case that ordering
+       assumption ever breaks for a given ZMK/Zephyr build. */
     zmk_hid_keyboard_clear();
     return true;
 }
